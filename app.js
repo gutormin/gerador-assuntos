@@ -3,12 +3,13 @@
 //  Substitua com as credenciais do seu projeto no Firebase Console
 // ═══════════════════════════════════════════════════════════════
 const firebaseConfig = {
-  apiKey:            "AIzaSy...",
-  authDomain:        "seuprojeto.firebaseapp.com",
-  projectId:         "seuprojeto",
-  storageBucket:     "seuprojeto.appspot.com",
-  messagingSenderId: "123456789",
-  appId:             "1:123456789:web:abc123..."
+  apiKey:            "AIzaSyApOPpXrpN1-tnM7xvKgNlaKI_UA_s-D60",
+  authDomain:        "gerador-de-assuntos-9bfe4.firebaseapp.com",
+  projectId:         "gerador-de-assuntos-9bfe4",
+  storageBucket:     "gerador-de-assuntos-9bfe4.firebasestorage.app",
+  messagingSenderId: "273319840643",
+  appId:             "1:273319840643:web:4f1f2b6979c39e8c0a44b6",
+  measurementId:     "G-5X8SSQRQ8S"
 };
 
 // ── Inicializar Firebase ──────────────────────────────────────
