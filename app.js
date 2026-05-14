@@ -1,11 +1,8 @@
 // CONFIGURAÇÃO FIREBASE - SUBSTITUA COM SUAS CONFIGURAÇÕES
 const firebaseConfig = {
-  apiKey: "AIzaSy...",
-  authDomain: "seuprojeto.firebaseapp.com",
-  projectId: "seuprojeto",
-  storageBucket: "seuprojeto.appspot.com",
-  messagingSenderId: "123456789",
-  appId: "1:123456789:web:abc123..."
+    apiKey: "SUA_API_KEY_AQUI",
+    projectId: "SEU_PROJECT_ID_AQUI",
+    appId: "SEU_APP_ID_AQUI"
 };
 
 // Inicializar Firebase
