@@ -1,298 +1,391 @@
-// CONFIGURAÇÃO FIREBASE - SUBSTITUA COM SUAS CONFIGURAÇÕES
+// ═══════════════════════════════════════════════════════════════
+//  CONFIGURAÇÃO FIREBASE
+//  Substitua com as credenciais do seu projeto no Firebase Console
+// ═══════════════════════════════════════════════════════════════
 const firebaseConfig = {
-    apiKey: "SUA_API_KEY_AQUI",
-    projectId: "SEU_PROJECT_ID_AQUI",
-    appId: "SEU_APP_ID_AQUI"
+  apiKey:            "AIzaSy...",
+  authDomain:        "seuprojeto.firebaseapp.com",
+  projectId:         "seuprojeto",
+  storageBucket:     "seuprojeto.appspot.com",
+  messagingSenderId: "123456789",
+  appId:             "1:123456789:web:abc123..."
 };
 
-// Inicializar Firebase
+// ── Inicializar Firebase ──────────────────────────────────────
+let db, assuntosRef;
+
 try {
     firebase.initializeApp(firebaseConfig);
-    console.log("Firebase inicializado!");
+    db = firebase.firestore();
+    assuntosRef = db.collection("assuntos");
+    console.log("✅ Firebase inicializado com sucesso!");
 } catch (error) {
-    console.error("Erro ao inicializar Firebase:", error);
-    alert("Configure o Firebase primeiro! Veja instruções na página.");
+    console.error("❌ Erro ao inicializar Firebase:", error);
+    toast("Configure o Firebase primeiro! Veja o aviso na página.", "error");
 }
 
-const db = firebase.firestore();
-const assuntosRef = db.collection("assuntos");
+// ── Estado da edição ──────────────────────────────────────────
+let editandoId = null;
 
-// Função para cadastrar assunto
-async function cadastrarAssunto() {
-    const titulo = document.getElementById('titulo').value;
-    const palavras_chave = document.getElementById('palavras_chave').value;
-    const categoria = document.getElementById('categoria').value;
-    const descricao = document.getElementById('descricao').value;
+// ═══════════════════════════════════════════════════════════════
+//  TOAST (substitui todos os alert/confirm com UI nativa)
+// ═══════════════════════════════════════════════════════════════
+function toast(msg, tipo = "success") {
+    const el = document.getElementById("toast");
+    el.textContent = msg;
+    el.className = tipo === "error" ? "error show" : "show";
+    clearTimeout(el._t);
+    el._t = setTimeout(() => { el.className = ""; }, 3500);
+}
 
-    if (!titulo || !palavras_chave) {
-        alert('Por favor, preencha título e palavras-chave!');
-        return;
-    }
+// ═══════════════════════════════════════════════════════════════
+//  SANITIZAÇÃO — previne XSS ao inserir dados no DOM
+// ═══════════════════════════════════════════════════════════════
+function sanitize(str) {
+    if (typeof str !== "string") return "";
+    return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
 
-    // Processar palavras-chave
-    const palavrasArray = palavras_chave.split(',')
+// ═══════════════════════════════════════════════════════════════
+//  CADASTRAR / ATUALIZAR ASSUNTO
+// ═══════════════════════════════════════════════════════════════
+async function salvarAssunto() {
+    const titulo      = document.getElementById("titulo").value.trim();
+    const palavrasRaw = document.getElementById("palavras_chave").value.trim();
+    const categoria   = document.getElementById("categoria").value.trim();
+    const descricao   = document.getElementById("descricao").value.trim();
+
+    if (!titulo) { toast("Preencha o título do assunto!", "error"); return; }
+    if (!palavrasRaw) { toast("Preencha ao menos uma palavra-chave!", "error"); return; }
+
+    const palavrasArray = palavrasRaw
+        .split(",")
         .map(p => p.trim())
         .filter(p => p.length > 0);
 
-    // Criar objeto do assunto
-    const assunto = {
-        titulo: titulo,
+    const dados = {
+        titulo,
         palavras_chave: palavrasArray,
         categoria: categoria || "geral",
         descricao: descricao || "",
-        data_cadastro: new Date()
     };
 
     try {
-        await assuntosRef.add(assunto);
-        alert('Assunto cadastrado com sucesso!');
-        limparFormulario();
+        if (editandoId) {
+            // Atualização
+            await assuntosRef.doc(editandoId).update({
+                ...dados,
+                data_atualizacao: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            toast("Assunto atualizado com sucesso!");
+            cancelarEdicao();
+        } else {
+            // Cadastro novo
+            await assuntosRef.add({
+                ...dados,
+                data_cadastro: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            toast("Assunto cadastrado com sucesso!");
+            limparFormulario();
+        }
+
         carregarAssuntosCadastrados();
     } catch (error) {
-        console.error('Erro ao cadastrar:', error);
-        alert('Erro ao cadastrar assunto!');
+        console.error("Erro ao salvar:", error);
+        toast("Erro ao salvar assunto. Verifique o Firebase.", "error");
     }
 }
 
-// Limpar formulário após cadastro
+// ── Limpar formulário ─────────────────────────────────────────
 function limparFormulario() {
-    document.getElementById('titulo').value = '';
-    document.getElementById('palavras_chave').value = '';
-    document.getElementById('categoria').value = '';
-    document.getElementById('descricao').value = '';
-}
-
-// Função principal de busca
-async function buscarAssuntos() {
-    const textoBusca = document.getElementById('busca').value.toLowerCase().trim();
-    
-    if (!textoBusca) {
-        alert('Digite alguma palavra para buscar!');
-        return;
-    }
-
-    // Dividir palavras da busca
-    const palavrasBusca = textoBusca.split(' ')
-        .map(p => p.trim())
-        .filter(p => p.length > 2); // Ignorar palavras muito curtas
-
-    const resultadosElemento = document.getElementById('resultados');
-    resultadosElemento.innerHTML = '<div class="loading">Buscando assuntos...</div>';
-
-    try {
-        // Buscar todos assuntos
-        const snapshot = await assuntosRef.get();
-        const assuntos = [];
-
-        snapshot.forEach(doc => {
-            const assunto = doc.data();
-            assunto.id = doc.id;
-            
-            // Calcular relevância
-            const relevancia = calcularRelevancia(assunto.palavras_chave, palavrasBusca);
-            
-            if (relevancia > 0) {
-                assuntos.push({
-                    ...assunto,
-                    relevancia: relevancia
-                });
-            }
-        });
-
-        // Ordenar por relevância
-        assuntos.sort((a, b) => b.relevancia - a.relevancia);
-
-        // Mostrar resultados
-        mostrarResultados(assuntos, palavrasBusca);
-    } catch (error) {
-        console.error('Erro na busca:', error);
-        resultadosElemento.innerHTML = '<div class="warning">Erro ao buscar assuntos!</div>';
-    }
-}
-
-// Algoritmo de cálculo de relevância
-function calcularRelevancia(palavrasAssunto, palavrasBusca) {
-    let pontos = 0;
-    
-    for (const palavraBusca of palavrasBusca) {
-        for (const palavraAssunto of palavrasAssunto) {
-            // Verificar correspondência (case insensitive)
-            if (palavraAssunto.toLowerCase().includes(palavraBusca) ||
-                palavraBusca.includes(palavraAssunto.toLowerCase())) {
-                pontos += 2;
-            }
-            
-            // Verificar semelhança parcial
-            if (palavraAssunto.toLowerCase().substring(0, 3) === palavraBusca.substring(0, 3)) {
-                pontos += 1;
-            }
-        }
-    }
-    
-    // Calcular porcentagem
-    const maxPontos = palavrasBusca.length * palavrasAssunto.length * 2;
-    const relevanciaPercent = Math.round((pontos / maxPontos) * 100);
-    
-    return relevanciaPercent;
-}
-
-// Mostrar resultados na página
-function mostrarResultados(assuntos, palavrasBusca) {
-    const resultadosElemento = document.getElementById('resultados');
-    
-    if (assuntos.length === 0) {
-        resultadosElemento.innerHTML = `
-            <div class="warning">
-                <i class="fas fa-exclamation-triangle"></i>
-                Nenhum assunto encontrado para: "${palavrasBusca.join(', ')}"
-                <br>Cadastre novos assuntos com essas palavras-chave!
-            </div>
-        `;
-        return;
-    }
-
-    let html = `<h3>${assuntos.length} assuntos encontrados:</h3>`;
-    
-    assuntos.forEach(assunto => {
-        html += `
-            <div class="assunto-item">
-                <h3>${assunto.titulo}</h3>
-                <p><strong>Categoria:</strong> ${assunto.categoria}</p>
-                <p>${assunto.descricao || 'Sem descrição'}</p>
-                <p class="palavras-chave">
-                    <i class="fas fa-key"></i> Palavras-chave: ${assunto.palavras_chave.join(', ')}
-                </p>
-                <span class="relevancia">Relevância: ${assunto.relevancia}%</span>
-                <button onclick="usarAssunto('${assunto.titulo}')" style="margin-top: 10px;">
-                    <i class="fas fa-check"></i> Usar este assunto
-                </button>
-            <button onclick="editarAssunto('${assunto.id}')" style="margin-top: 10px; margin-left: 10px;">
-                <i class="fas fa-edit"></i> Editar
-            </button>
-            </div>
-        `;
+    ["titulo", "palavras_chave", "categoria", "descricao"].forEach(id => {
+        document.getElementById(id).value = "";
     });
-    
-    resultadosElemento.innerHTML = html;
 }
 
-// Usar assunto selecionado
-function usarAssunto(titulo) {
-    alert(`Assunto selecionado: "${titulo}"\nVocê pode usar este assunto em seu ofício!`);
-}
-
-// Carregar todos assuntos cadastrados
-async function carregarAssuntosCadastrados() {
-    const listaElemento = document.getElementById('lista_assuntos');
-
-    try {
-        const snapshot = await assuntosRef.get();
-        let html = '<ul>';
-        
-        snapshot.forEach(doc => {
-            const assunto = doc.data();
-            html += `
-                <li>
-                    <div>
-                        <strong>${assunto.titulo}</strong><br>
-                        <small>Categoria: ${assunto.categoria}</small><br>
-                        <small>Palavras-chave: ${assunto.palavras_chave.join(', ')}</small>
-                    </div>
-                    <button class="delete" onclick="removerAssunto('${doc.id}')">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </li>
-            `;
-        });
-        
-        html += '</ul>';
-        
-        if (snapshot.size === 0) {
-            html = '<div class="warning">Nenhum assunto cadastrado ainda!</div>';
-        }
-
-        listaElemento.innerHTML = html;
-    } catch (error) {
-        console.error('Erro ao carregar:', error);
-        listaElemento.innerHTML = '<div class="warning">Erro ao carregar assuntos!</div>';
-    }
-}
-
-// Remover assunto
-async function removerAssunto(id) {
-    if (!confirm('Tem certeza que deseja remover este assunto?')) return;
-
-    try {
-        await assuntosRef.doc(id).delete();
-        alert('Assunto removido!');
-        carregarAssuntosCadastrados();
-    } catch (error) {
-        console.error('Erro ao remover:', error);
-        alert('Erro ao remover assunto!');
-    }
-}
-
-// Editar assunto
+// ═══════════════════════════════════════════════════════════════
+//  EDITAR ASSUNTO
+// ═══════════════════════════════════════════════════════════════
 async function editarAssunto(id) {
+    if (!id) return;
+
     try {
         const doc = await assuntosRef.doc(id).get();
-        if (!doc.exists) return;
+        if (!doc.exists) { toast("Assunto não encontrado.", "error"); return; }
 
-        const assunto = doc.data();
-        
-        document.getElementById('titulo').value = assunto.titulo;
-        document.getElementById('palavras_chave').value = assunto.palavras_chave.join(', ');
-        document.getElementById('categoria').value = assunto.categoria;
-        document.getElementById('descricao').value = assunto.descricao || '';
-        
-        // Alterar função do botão para atualizar
-        const btn = document.querySelector('.section button');
-        btn.innerHTML = '<i class="fas fa-edit"></i> Atualizar Assunto';
-        btn.onclick = async function() {
-            await atualizarAssunto(id);
-            btn.innerHTML = '<i class="fas fa-save"></i> Cadastrar Assunto';
-            btn.onclick = cadastrarAssunto;
-            limparFormulario();
-        };
-        
-        alert('Preencha os campos e clique em "Atualizar Assunto"');
+        const a = doc.data();
+        document.getElementById("titulo").value        = a.titulo || "";
+        document.getElementById("palavras_chave").value = (a.palavras_chave || []).join(", ");
+        document.getElementById("categoria").value     = a.categoria || "";
+        document.getElementById("descricao").value     = a.descricao || "";
+
+        editandoId = id;
+        document.getElementById("btn-label").textContent = "Atualizar Assunto";
+        document.getElementById("edit-mode-banner").classList.add("show");
+        document.getElementById("titulo").focus();
+        document.getElementById("titulo").scrollIntoView({ behavior: "smooth", block: "center" });
     } catch (error) {
-        console.error('Erro ao editar:', error);
+        console.error("Erro ao carregar assunto para edição:", error);
+        toast("Erro ao carregar assunto.", "error");
     }
 }
 
-// Atualizar assunto
-async function atualizarAssunto(id) {
-    const titulo = document.getElementById('titulo').value;
-    const palavras_chave = document.getElementById('palavras_chave').value;
-    const categoria = document.getElementById('categoria').value;
-    const descricao = document.getElementById('descricao').value;
+// ── Cancelar edição ───────────────────────────────────────────
+function cancelarEdicao() {
+    editandoId = null;
+    document.getElementById("btn-label").textContent = "Cadastrar Assunto";
+    document.getElementById("edit-mode-banner").classList.remove("show");
+    limparFormulario();
+}
 
-    const palavrasArray = palavras_chave.split(',')
+// ═══════════════════════════════════════════════════════════════
+//  REMOVER ASSUNTO
+// ═══════════════════════════════════════════════════════════════
+function removerAssunto(id, titulo) {
+    // Cria confirmação inline (sem usar confirm() nativo)
+    const li = document.getElementById("li-" + id);
+    if (!li) return;
+
+    const original = li.innerHTML;
+    li.innerHTML = `
+        <div class="info" style="color:var(--danger);font-size:.88rem;">
+            <strong>Remover "${sanitize(titulo)}"?</strong>
+        </div>
+        <div class="actions">
+            <button class="btn btn-danger btn-sm" onclick="confirmarRemocao('${sanitize(id)}')">
+                <i class="fas fa-trash"></i> Sim
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="carregarAssuntosCadastrados()">
+                Cancelar
+            </button>
+        </div>
+    `;
+}
+
+async function confirmarRemocao(id) {
+    try {
+        await assuntosRef.doc(id).delete();
+        toast("Assunto removido.");
+        carregarAssuntosCadastrados();
+    } catch (error) {
+        console.error("Erro ao remover:", error);
+        toast("Erro ao remover assunto.", "error");
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  BUSCA / GERADOR DE ASSUNTOS
+// ═══════════════════════════════════════════════════════════════
+async function buscarAssuntos() {
+    const textoBusca = document.getElementById("busca").value.trim();
+
+    if (!textoBusca) {
+        toast("Digite alguma palavra para buscar!", "error");
+        return;
+    }
+
+    // Palavras com 3+ letras para busca
+    const palavrasBusca = textoBusca
+        .toLowerCase()
+        .split(/\s+/)
         .map(p => p.trim())
-        .filter(p => p.length > 0);
+        .filter(p => p.length >= 2);
+
+    if (palavrasBusca.length === 0) {
+        toast("Digite palavras com pelo menos 2 letras.", "error");
+        return;
+    }
+
+    const el = document.getElementById("resultados");
+    el.innerHTML = `<div class="empty"><i class="fas fa-spinner fa-spin"></i>Buscando<span class="loading-dots"></span></div>`;
 
     try {
-        await assuntosRef.doc(id).update({
-            titulo: titulo,
-            palavras_chave: palavrasArray,
-            categoria: categoria || "geral",
-            descricao: descricao || "",
-            data_atualizacao: new Date()
+        // Busca paginada (até 200 docs por vez — suficiente para acervos comuns)
+        const snapshot = await assuntosRef.limit(200).get();
+        const resultados = [];
+
+        snapshot.forEach(doc => {
+            const assunto = doc.data();
+            const relevancia = calcularRelevancia(assunto.palavras_chave || [], palavrasBusca);
+            if (relevancia > 0) {
+                resultados.push({ id: doc.id, ...assunto, relevancia });
+            }
         });
-        
-        alert('Assunto atualizado!');
-        carregarAssuntosCadastrados();
-        buscarAssuntos();
+
+        resultados.sort((a, b) => b.relevancia - a.relevancia);
+        mostrarResultados(resultados, palavrasBusca);
     } catch (error) {
-        console.error('Erro ao atualizar:', error);
-        alert('Erro ao atualizar assunto!');
+        console.error("Erro na busca:", error);
+        el.innerHTML = `<div class="empty" style="color:var(--danger)"><i class="fas fa-circle-exclamation"></i>Erro ao buscar. Verifique o Firebase.</div>`;
     }
 }
 
-// Função para cadastrar assuntos exemplo (teste)
+// ── Algoritmo de relevância ───────────────────────────────────
+function calcularRelevancia(palavrasAssunto, palavrasBusca) {
+    if (!palavrasAssunto || palavrasAssunto.length === 0) return 0;
+
+    let pontos = 0;
+    const palavrasLower = palavrasAssunto.map(p => p.toLowerCase());
+
+    for (const busca of palavrasBusca) {
+        for (const palavra of palavrasLower) {
+            if (palavra === busca) {
+                pontos += 4; // Correspondência exata
+            } else if (palavra.includes(busca) || busca.includes(palavra)) {
+                pontos += 2; // Correspondência parcial
+            } else if (palavra.length >= 3 && busca.length >= 3 &&
+                       palavra.substring(0, 3) === busca.substring(0, 3)) {
+                pontos += 1; // Mesma raiz
+            }
+        }
+    }
+
+    const maxPontos = palavrasBusca.length * palavrasAssunto.length * 4;
+    return maxPontos > 0 ? Math.min(100, Math.round((pontos / maxPontos) * 100)) : 0;
+}
+
+// ── Renderizar resultados ─────────────────────────────────────
+function mostrarResultados(assuntos, palavrasBusca) {
+    const el = document.getElementById("resultados");
+
+    if (assuntos.length === 0) {
+        el.innerHTML = `
+            <div class="empty">
+                <i class="fas fa-face-frown-open"></i>
+                Nenhum assunto encontrado para <strong>"${sanitize(palavrasBusca.join(", "))}"</strong><br>
+                <small>Cadastre novos assuntos com essas palavras-chave.</small>
+            </div>`;
+        return;
+    }
+
+    let html = `<p style="font-size:.82rem;color:var(--ink-muted);margin-bottom:14px;">
+        ${assuntos.length} assunto(s) encontrado(s) — ordenado por relevância
+    </p>`;
+
+    assuntos.forEach(a => {
+        const tags = (a.palavras_chave || []).map(t => {
+            const isMatch = palavrasBusca.some(b =>
+                t.toLowerCase().includes(b) || b.includes(t.toLowerCase())
+            );
+            return `<span class="tag ${isMatch ? 'highlight' : ''}">${sanitize(t)}</span>`;
+        }).join("");
+
+        html += `
+        <div class="result-item">
+            <h3>${sanitize(a.titulo)}</h3>
+            <div class="result-meta">
+                <i class="fas fa-folder-open" style="margin-right:4px;opacity:.6"></i>${sanitize(a.categoria || "geral")}
+                ${a.descricao ? ` &nbsp;·&nbsp; ${sanitize(a.descricao).substring(0, 80)}${a.descricao.length > 80 ? '…' : ''}` : ''}
+            </div>
+            <div class="tags">${tags}</div>
+            <div class="relevance-label">Relevância: ${a.relevancia}%</div>
+            <div class="relevance-bar">
+                <div class="relevance-fill" style="width:${a.relevancia}%"></div>
+            </div>
+            <div class="result-actions">
+                <button class="btn btn-primary btn-sm" onclick="usarAssunto(${JSON.stringify(sanitize(a.titulo))})">
+                    <i class="fas fa-check"></i> Usar este assunto
+                </button>
+                <button class="btn btn-outline btn-sm" onclick="editarAssunto(${JSON.stringify(a.id)})">
+                    <i class="fas fa-pencil"></i> Editar
+                </button>
+            </div>
+        </div>`;
+    });
+
+    el.innerHTML = html;
+}
+
+// ── Usar assunto selecionado ──────────────────────────────────
+function usarAssunto(titulo) {
+    navigator.clipboard?.writeText(titulo).catch(() => {});
+    toast(`✓ "${titulo}" copiado para a área de transferência!`);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CARREGAR LISTA DE ASSUNTOS CADASTRADOS
+// ═══════════════════════════════════════════════════════════════
+async function carregarAssuntosCadastrados() {
+    const el = document.getElementById("lista_assuntos");
+
+    try {
+        const snapshot = await assuntosRef
+            .orderBy("data_cadastro", "desc")
+            .limit(100)
+            .get();
+
+        if (snapshot.empty) {
+            el.innerHTML = `<div class="empty"><i class="fas fa-inbox"></i>Nenhum assunto cadastrado ainda.</div>`;
+            return;
+        }
+
+        let html = '<ul class="assunto-list">';
+        snapshot.forEach(doc => {
+            const a = doc.data();
+            html += `
+            <li id="li-${sanitize(doc.id)}">
+                <div class="info">
+                    <strong>${sanitize(a.titulo)}</strong>
+                    <small>${sanitize(a.categoria || "geral")} &nbsp;·&nbsp; ${(a.palavras_chave || []).map(sanitize).join(", ")}</small>
+                </div>
+                <div class="actions">
+                    <button class="btn btn-outline btn-sm" onclick="editarAssunto(${JSON.stringify(doc.id)})">
+                        <i class="fas fa-pencil"></i>
+                    </button>
+                    <button class="btn btn-danger btn-sm" onclick="removerAssunto(${JSON.stringify(doc.id)}, ${JSON.stringify(a.titulo)})">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </li>`;
+        });
+        html += '</ul>';
+        el.innerHTML = html;
+    } catch (error) {
+        console.error("Erro ao carregar:", error);
+        // Se o índice não foi criado, tenta sem ordenação
+        try {
+            const snapshot = await assuntosRef.limit(100).get();
+            if (snapshot.empty) {
+                el.innerHTML = `<div class="empty"><i class="fas fa-inbox"></i>Nenhum assunto cadastrado ainda.</div>`;
+                return;
+            }
+            let html = '<ul class="assunto-list">';
+            snapshot.forEach(doc => {
+                const a = doc.data();
+                html += `
+                <li id="li-${sanitize(doc.id)}">
+                    <div class="info">
+                        <strong>${sanitize(a.titulo)}</strong>
+                        <small>${sanitize(a.categoria || "geral")} &nbsp;·&nbsp; ${(a.palavras_chave || []).map(sanitize).join(", ")}</small>
+                    </div>
+                    <div class="actions">
+                        <button class="btn btn-outline btn-sm" onclick="editarAssunto(${JSON.stringify(doc.id)})">
+                            <i class="fas fa-pencil"></i>
+                        </button>
+                        <button class="btn btn-danger btn-sm" onclick="removerAssunto(${JSON.stringify(doc.id)}, ${JSON.stringify(a.titulo)})">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </li>`;
+            });
+            html += '</ul>';
+            el.innerHTML = html;
+        } catch(e2) {
+            el.innerHTML = `<div class="empty" style="color:var(--danger)"><i class="fas fa-circle-exclamation"></i>Erro ao carregar. Verifique o Firebase.</div>`;
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  FUNÇÕES DE CONSOLE (teste/utilitários)
+// ═══════════════════════════════════════════════════════════════
 async function cadastrarAssuntoTeste() {
-    const assuntosTeste = [
+    const exemplos = [
         {
             titulo: "Solicitação de documentos pessoais",
             palavras_chave: ["documento", "certidão", "cópia", "RG", "CPF", "comprovante"],
@@ -325,42 +418,45 @@ async function cadastrarAssuntoTeste() {
         }
     ];
 
-    for (const assunto of assuntosTeste) {
+    for (const a of exemplos) {
         try {
-            await assuntosRef.add(assunto);
-            console.log(`Assunto "${assunto.titulo}" cadastrado!`);
-        } catch (error) {
-            console.error('Erro ao cadastrar teste:', error);
+            await assuntosRef.add({
+                ...a,
+                data_cadastro: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            console.log(`✅ Cadastrado: ${a.titulo}`);
+        } catch (e) {
+            console.error(`❌ Erro em "${a.titulo}":`, e);
         }
     }
 
-    alert('5 assuntos de exemplo cadastrados!');
+    toast("5 assuntos de exemplo cadastrados!");
     carregarAssuntosCadastrados();
 }
 
-// Função para listar todos assuntos no console
 async function listarTodosAssuntos() {
     try {
         const snapshot = await assuntosRef.get();
-        console.log("=== ASSUNTOS CADASTRADOS ===");
+        console.group("=== ASSUNTOS CADASTRADOS ===");
         snapshot.forEach(doc => {
             console.log(`ID: ${doc.id}`);
-            console.log(doc.data());
-            console.log("---");
+            console.table(doc.data());
         });
-        console.log(`Total: ${snapshot.size} assuntos`);
-    } catch (error) {
-        console.error('Erro ao listar:', error);
+        console.log(`Total: ${snapshot.size} assunto(s)`);
+        console.groupEnd();
+    } catch (e) {
+        console.error("Erro ao listar:", e);
     }
 }
 
-// Inicializar página
-window.onload = function() {
-    console.log("Sistema Gerador de Assuntos inicializado!");
-    console.log("Comandos disponíveis no console:");
-    console.log("- cadastrarAssuntoTeste()");
-    console.log("- listarTodosAssuntos()");
-    
-    // Carregar assuntos cadastrados
+// ═══════════════════════════════════════════════════════════════
+//  INICIALIZAÇÃO
+// ═══════════════════════════════════════════════════════════════
+window.addEventListener("load", () => {
+    console.log("🟢 Sistema Gerador de Assuntos carregado!");
+    console.log("📋 Funções de console disponíveis:");
+    console.log("   cadastrarAssuntoTeste()  — insere 5 assuntos de exemplo");
+    console.log("   listarTodosAssuntos()   — lista todos no console");
+
     carregarAssuntosCadastrados();
-};
+});
