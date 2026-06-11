@@ -32,7 +32,6 @@ try {
     mostrarErroConfig();
 }
 
-// Exibe o banner de erro de configuração (oculto por padrão)
 function mostrarErroConfig() {
     const el = document.getElementById("config-error");
     if (el) el.classList.add("show");
@@ -40,12 +39,11 @@ function mostrarErroConfig() {
 
 // ── Estado global ─────────────────────────────────────────────
 let editandoId      = null;
-let tagsAtivas      = [];           // palavras-chave como array de chips
-let categoriasCache = new Set();    // categorias conhecidas (para datalist)
-let buscasRecentes  = [];           // últimas 5 buscas da sessão
+let tagsAtivas      = [];
+let categoriasCache = new Set();
+let buscasRecentes  = [];
 let debounceTimer   = null;
 
-// ── Limites de leitura do Firestore ───────────────────────────
 const LIMITE_BUSCA = 200;
 const LIMITE_LISTA = 100;
 
@@ -90,7 +88,6 @@ function renderChips() {
     const wrapper = document.getElementById("tags-wrapper");
     const input   = document.getElementById("tag-input");
 
-    // Remove chips antigos (mantém o input)
     wrapper.querySelectorAll(".chip").forEach(c => c.remove());
 
     tagsAtivas.forEach((tag, i) => {
@@ -100,10 +97,8 @@ function renderChips() {
         wrapper.insertBefore(chip, input);
     });
 
-    // Atualiza o campo hidden usado pelo salvarAssunto
     document.getElementById("palavras_chave").value = tagsAtivas.join(", ");
 
-    // Placeholder dinâmico
     input.placeholder = tagsAtivas.length === 0
         ? "Digite e pressione Enter ou vírgula…"
         : "Adicionar mais…";
@@ -112,7 +107,7 @@ function renderChips() {
 function adicionarTag(valor) {
     const limpo = valor.trim().replace(/,+$/, "").trim();
     if (!limpo) return;
-    if (tagsAtivas.includes(limpo)) return; // sem duplicatas
+    if (tagsAtivas.includes(limpo)) return;
     tagsAtivas.push(limpo);
     renderChips();
 }
@@ -134,7 +129,6 @@ function tagKeyDown(e) {
 }
 
 function tagInput(e) {
-    // Suporte a colar texto com vírgulas
     const v = e.target.value;
     if (v.includes(",")) {
         v.split(",").forEach(p => adicionarTag(p));
@@ -148,7 +142,6 @@ function limparChips() {
     document.getElementById("tag-input").value = "";
 }
 
-// Preenche chips ao editar um assunto
 function carregarChips(palavras) {
     tagsAtivas = [...palavras];
     renderChips();
@@ -267,20 +260,23 @@ function cancelarEdicao() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  BUSCA
+//  BUSCA (CORRIGIDO: buscarDebounce + buscarAssuntos)
 // ═══════════════════════════════════════════════════════════════
-function buscar() {
+
+// Função Debounce - chamada enquanto digita
+function buscarDebounce() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+        buscarAssuntos();
+    }, 300);
+}
+
+// Função principal de busca
+function buscarAssuntos() {
     const termo = document.getElementById("busca").value.trim();
     if (!termo) {
-        document.getElementById("resultados").innerHTML = "";
+        document.getElementById("resultados").innerHTML = '<div class="empty"><i class="fas fa-search"></i>Digite palavras acima para encontrar assuntos</div>';
         return;
-    }
-
-    // Armazena buscas recentes
-    if (!buscasRecentes.includes(termo)) {
-        buscasRecentes.unshift(termo);
-        if (buscasRecentes.length > 5) buscasRecentes.pop();
-        atualizarBuscasRecentes();
     }
 
     const el = document.getElementById("resultados");
@@ -318,14 +314,7 @@ function buscar() {
             assuntos.sort((a, b) => b.relevancia - a.relevancia);
 
             if (assuntos.length === 0) {
-                el.innerHTML = `
-                    <div class="empty">
-                        <i class="fas fa-inbox"></i>
-                        Nenhum resultado para "<strong>${sanitize(termo)}</strong>".
-                        <button class="btn btn-primary" style="margin-top:12px;" onclick="irParaCadastro('${sanitize(termo).replace(/'/g, "\\'")}')">
-                            Criar novo assunto
-                        </button>
-                    </div>`;
+                el.innerHTML = `<div class="empty"><i class="fas fa-inbox"></i>Nenhum resultado para "<strong>${sanitize(termo)}</strong>".</div>`;
                 return;
             }
 
@@ -335,18 +324,6 @@ function buscar() {
             console.error("Erro na busca:", error);
             el.innerHTML = `<div class="empty" style="color:var(--danger)"><i class="fas fa-circle-exclamation"></i>Erro na busca</div>`;
         });
-}
-
-function atualizarBuscasRecentes() {
-    const el = document.getElementById("buscas-recentes");
-    if (!el) return;
-    if (buscasRecentes.length === 0) {
-        el.innerHTML = "";
-        return;
-    }
-    el.innerHTML = "📌 RECENTES: " + buscasRecentes.map(t => 
-        `<button class="btn-tag-recent" onclick="document.getElementById('busca').value='${sanitize(t).replace(/"/g, '&quot;')}'; buscar()">${sanitize(t)}</button>`
-    ).join("");
 }
 
 function renderResultados(assuntos, palavrasBusca = []) {
@@ -395,7 +372,6 @@ function renderResultados(assuntos, palavrasBusca = []) {
 
     el.innerHTML = html;
 
-    // Event delegation — evita problemas com caracteres especiais no onclick inline
     el.querySelectorAll("[data-action]").forEach(btn => {
         btn.addEventListener("click", () => {
             const action = btn.dataset.action;
@@ -413,7 +389,6 @@ function renderResultados(assuntos, palavrasBusca = []) {
     });
 }
 
-// ── Ir para cadastro pré-preenchido quando não acha resultado ──
 function irParaCadastro(termoBusca) {
     mudarAba("gerenciar");
     setTimeout(() => {
@@ -438,8 +413,7 @@ function usarAssunto(descricao) {
 // ═══════════════════════════════════════════════════════════════
 //  CARREGAR LISTA DE ASSUNTOS CADASTRADOS
 // ═══════════════════════════════════════════════════════════════
-// ── Lista de cadastrados: cache local p/ filtro + agrupamento ──
-let listaCache = []; // [{id, titulo, categoria, palavras_chave}]
+let listaCache = [];
 
 function renderItemLista(item) {
     return `
@@ -467,7 +441,6 @@ function renderListaAgrupada(itens) {
         return;
     }
 
-    // Agrupa por categoria
     const grupos = {};
     itens.forEach(item => {
         const cat = item.categoria || "geral";
@@ -485,7 +458,6 @@ function renderListaAgrupada(itens) {
 
     el.innerHTML = html;
 
-    // Event delegation para editar/remover
     el.querySelectorAll("[data-action]").forEach(btn => {
         btn.addEventListener("click", () => {
             const action = btn.dataset.action;
@@ -519,7 +491,7 @@ function processarSnapshot(snapshot) {
     });
     atualizarContador(listaCache.length);
     atualizarDatalist();
-    filtrarLista(); // respeita filtro ativo, ou mostra tudo
+    filtrarLista();
 }
 
 async function carregarAssuntosCadastrados() {
@@ -587,7 +559,6 @@ window.addEventListener("load", () => {
     console.log("   cadastrarAssuntoTeste()  — insere 5 assuntos de exemplo");
     console.log("   listarTodosAssuntos()    — lista todos no console");
 
-    // Atalho de teclado: "/" foca a busca
     document.addEventListener("keydown", (e) => {
         if (e.key === "/" && !["INPUT", "TEXTAREA"].includes(document.activeElement.tagName)) {
             e.preventDefault();
