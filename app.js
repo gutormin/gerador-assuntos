@@ -23,13 +23,19 @@ try {
 
     auth.signInAnonymously().catch((err) => {
         console.error("❌ Erro na autenticação anônima:", err);
-        toast("Erro de autenticação. Verifique se o login anônimo está ativo no Firebase.", "error");
+        mostrarErroConfig();
     });
 
     console.log("✅ Firebase inicializado com sucesso!");
 } catch (error) {
     console.error("❌ Erro ao inicializar Firebase:", error);
-    toast("Configure o Firebase primeiro! Veja o aviso na página.", "error");
+    mostrarErroConfig();
+}
+
+// Exibe o banner de erro de configuração (oculto por padrão)
+function mostrarErroConfig() {
+    const el = document.getElementById("config-error");
+    if (el) el.classList.add("show");
 }
 
 // ── Estado global ─────────────────────────────────────────────
@@ -275,14 +281,17 @@ function removerAssunto(id, titulo) {
             <strong>Remover "${sanitize(titulo)}"?</strong>
         </div>
         <div class="actions">
-            <button class="btn btn-danger btn-sm" onclick="confirmarRemocao('${sanitize(id)}')">
+            <button class="btn btn-danger btn-sm" data-confirm="sim">
                 <i class="fas fa-trash"></i> Sim
             </button>
-            <button class="btn btn-ghost btn-sm" onclick="carregarAssuntosCadastrados()">
+            <button class="btn btn-ghost btn-sm" data-confirm="nao">
                 Cancelar
             </button>
         </div>
     `;
+
+    li.querySelector('[data-confirm="sim"]').addEventListener("click", () => confirmarRemocao(id));
+    li.querySelector('[data-confirm="nao"]').addEventListener("click", () => filtrarLista());
 }
 
 async function confirmarRemocao(id) {
@@ -370,9 +379,15 @@ function renderBuscasRecentes() {
     }
 
     container.style.display = "flex";
-    chips.innerHTML = buscasRecentes.map(t =>
-        `<span class="recent-chip" onclick="usarBuscaRecente(${JSON.stringify(t)})">${sanitize(t)}</span>`
+    chips.innerHTML = buscasRecentes.map((t, i) =>
+        `<span class="recent-chip" data-recent-idx="${i}">${sanitize(t)}</span>`
     ).join("");
+
+    chips.querySelectorAll("[data-recent-idx]").forEach(chip => {
+        chip.addEventListener("click", () => {
+            usarBuscaRecente(buscasRecentes[parseInt(chip.dataset.recentIdx)]);
+        });
+    });
 }
 
 function usarBuscaRecente(termo) {
@@ -419,10 +434,12 @@ function mostrarResultados(assuntos, palavrasBusca, termoBusca) {
                 Nenhum assunto encontrado para <span class="search-term">"${sanitize(termoBusca)}"</span>
                 <br><small style="color:var(--ink-muted)">Que tal cadastrar esse assunto agora?</small>
                 <br>
-                <button class="btn btn-primary btn-sm" onclick="irParaCadastro(${JSON.stringify(termoBusca)})">
+                <button class="btn btn-primary btn-sm" id="btn-cta-cadastrar">
                     <i class="fas fa-plus"></i> Cadastrar "${sanitize(termoBusca)}"
                 </button>
             </div>`;
+        document.getElementById("btn-cta-cadastrar")
+            .addEventListener("click", () => irParaCadastro(termoBusca));
         return;
     }
 
@@ -430,7 +447,7 @@ function mostrarResultados(assuntos, palavrasBusca, termoBusca) {
         ${assuntos.length} assunto(s) encontrado(s) — ordenado por relevância
     </p>`;
 
-    assuntos.forEach(a => {
+    assuntos.forEach((a, idx) => {
         const tags = (a.palavras_chave || []).map(t => {
             const isMatch = palavrasBusca.some(b =>
                 t.toLowerCase().includes(b) || b.includes(t.toLowerCase())
@@ -438,25 +455,29 @@ function mostrarResultados(assuntos, palavrasBusca, termoBusca) {
             return `<span class="tag ${isMatch ? 'highlight' : ''}">${sanitize(t)}</span>`;
         }).join("");
 
+        const temDesc = !!(a.descricao && a.descricao.trim());
+
         html += `
-        <div class="result-item">
-            <h3>${sanitize(a.titulo)}</h3>
+        <div class="result-item" id="result-${idx}">
+            <div class="result-top">
+                <h3>${sanitize(a.titulo)}</h3>
+                <span class="relevance-badge ${a.relevancia >= 60 ? 'high' : ''}">${a.relevancia}%</span>
+            </div>
             <div class="result-meta">
                 <i class="fas fa-folder-open" style="margin-right:4px;opacity:.6"></i>${sanitize(a.categoria || "geral")}
-                ${a.descricao ? ` &nbsp;·&nbsp; ${sanitize(a.descricao).substring(0, 80)}${a.descricao.length > 80 ? '…' : ''}` : ''}
             </div>
             <div class="tags">${tags}</div>
-            <div class="relevance-label">Relevância: ${a.relevancia}%</div>
-            <div class="relevance-bar">
-                <div class="relevance-fill" style="width:${a.relevancia}%"></div>
-            </div>
+            ${temDesc ? `<div class="result-desc">${sanitize(a.descricao)}</div>` : ''}
             <div class="result-actions">
                 <button class="btn btn-primary btn-sm" data-action="usar" data-titulo="${sanitize(a.titulo).replace(/"/g, '&quot;')}">
-                    <i class="fas fa-check"></i> Usar este assunto
+                    <i class="fas fa-copy"></i> Usar este assunto
                 </button>
-                <button class="btn btn-outline btn-sm" data-action="editar" data-id="${sanitize(a.id)}">
-                    <i class="fas fa-pencil"></i> Editar
+                <button class="btn btn-ghost btn-icon" data-action="editar" data-id="${sanitize(a.id)}" title="Editar">
+                    <i class="fas fa-pencil"></i>
                 </button>
+                ${temDesc ? `<button class="btn-expand" data-action="expandir" data-idx="${idx}">
+                    <i class="fas fa-chevron-down"></i> detalhes
+                </button>` : ''}
             </div>
         </div>`;
     });
@@ -464,11 +485,19 @@ function mostrarResultados(assuntos, palavrasBusca, termoBusca) {
     el.innerHTML = html;
 
     // Event delegation — evita problemas com caracteres especiais no onclick inline
-    el.querySelectorAll("button[data-action]").forEach(btn => {
+    el.querySelectorAll("[data-action]").forEach(btn => {
         btn.addEventListener("click", () => {
             const action = btn.dataset.action;
             if (action === "usar") usarAssunto(btn.dataset.titulo);
             if (action === "editar") editarAssunto(btn.dataset.id);
+            if (action === "expandir") {
+                const item = document.getElementById("result-" + btn.dataset.idx);
+                item.classList.toggle("expanded");
+                const expandido = item.classList.contains("expanded");
+                btn.innerHTML = expandido
+                    ? '<i class="fas fa-chevron-up"></i> ocultar'
+                    : '<i class="fas fa-chevron-down"></i> detalhes';
+            }
         });
     });
 }
@@ -494,42 +523,88 @@ function usarAssunto(titulo) {
 // ═══════════════════════════════════════════════════════════════
 //  CARREGAR LISTA DE ASSUNTOS CADASTRADOS
 // ═══════════════════════════════════════════════════════════════
-function renderItemLista(doc) {
-    const a = doc.data();
+// ── Lista de cadastrados: cache local p/ filtro + agrupamento ──
+let listaCache = []; // [{id, titulo, categoria, palavras_chave}]
+
+function renderItemLista(item) {
     return `
-    <li id="li-${sanitize(doc.id)}">
+    <li id="li-${sanitize(item.id)}">
         <div class="info">
-            <strong>${sanitize(a.titulo)}</strong>
-            <small>${sanitize(a.categoria || "geral")} &nbsp;·&nbsp; ${(a.palavras_chave || []).map(sanitize).join(", ")}</small>
+            <strong>${sanitize(item.titulo)}</strong>
+            <small>${(item.palavras_chave || []).map(sanitize).join(", ")}</small>
         </div>
         <div class="actions">
-            <button class="btn btn-outline btn-sm" onclick="editarAssunto(${JSON.stringify(doc.id)})">
+            <button class="btn btn-ghost btn-icon" data-action="editar" data-id="${sanitize(item.id)}" title="Editar">
                 <i class="fas fa-pencil"></i>
             </button>
-            <button class="btn btn-danger btn-sm" onclick="removerAssunto(${JSON.stringify(doc.id)}, ${JSON.stringify(a.titulo)})">
+            <button class="btn btn-danger btn-icon" data-action="remover" data-id="${sanitize(item.id)}" data-titulo="${sanitize(item.titulo).replace(/"/g, '&quot;')}" title="Remover">
                 <i class="fas fa-trash"></i>
             </button>
         </div>
     </li>`;
 }
 
-function renderLista(snapshot, el) {
-    if (snapshot.empty) {
-        el.innerHTML = `<div class="empty"><i class="fas fa-inbox"></i>Nenhum assunto cadastrado ainda.</div>`;
-        atualizarContador(0);
+function renderListaAgrupada(itens) {
+    const el = document.getElementById("lista_assuntos");
+
+    if (itens.length === 0) {
+        el.innerHTML = `<div class="empty"><i class="fas fa-inbox"></i>Nenhum assunto encontrado.</div>`;
         return;
     }
-    let html = '<ul class="assunto-list">';
-    snapshot.forEach(doc => {
-        html += renderItemLista(doc);
-        // Coleta categorias para o datalist
-        const cat = doc.data().categoria;
-        if (cat) categoriasCache.add(cat);
+
+    // Agrupa por categoria
+    const grupos = {};
+    itens.forEach(item => {
+        const cat = item.categoria || "geral";
+        if (!grupos[cat]) grupos[cat] = [];
+        grupos[cat].push(item);
     });
-    html += '</ul>';
+
+    let html = "";
+    Object.keys(grupos).sort().forEach(cat => {
+        html += `<div class="categoria-group-title">${sanitize(cat)} (${grupos[cat].length})</div>`;
+        html += '<ul class="assunto-list">';
+        grupos[cat].forEach(item => { html += renderItemLista(item); });
+        html += '</ul>';
+    });
+
     el.innerHTML = html;
-    atualizarContador(snapshot.size);
+
+    // Event delegation para editar/remover
+    el.querySelectorAll("[data-action]").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const action = btn.dataset.action;
+            if (action === "editar") editarAssunto(btn.dataset.id);
+            if (action === "remover") removerAssunto(btn.dataset.id, btn.dataset.titulo);
+        });
+    });
+}
+
+function filtrarLista() {
+    const termo = (document.getElementById("filtro-lista-input")?.value || "").toLowerCase().trim();
+    if (!termo) {
+        renderListaAgrupada(listaCache);
+        return;
+    }
+    const filtrados = listaCache.filter(item =>
+        (item.titulo || "").toLowerCase().includes(termo) ||
+        (item.categoria || "").toLowerCase().includes(termo) ||
+        (item.palavras_chave || []).some(p => p.toLowerCase().includes(termo))
+    );
+    renderListaAgrupada(filtrados);
+}
+
+function processarSnapshot(snapshot) {
+    listaCache = [];
+    categoriasCache.clear();
+    snapshot.forEach(doc => {
+        const a = doc.data();
+        listaCache.push({ id: doc.id, ...a });
+        if (a.categoria) categoriasCache.add(a.categoria);
+    });
+    atualizarContador(listaCache.length);
     atualizarDatalist();
+    filtrarLista(); // respeita filtro ativo, ou mostra tudo
 }
 
 async function carregarAssuntosCadastrados() {
@@ -540,12 +615,12 @@ async function carregarAssuntosCadastrados() {
             .orderBy("data_cadastro", "desc")
             .limit(LIMITE_LISTA)
             .get();
-        renderLista(snapshot, el);
+        processarSnapshot(snapshot);
     } catch (error) {
         console.error("Erro ao carregar:", error);
         try {
             const snapshot = await assuntosRef.limit(LIMITE_LISTA).get();
-            renderLista(snapshot, el);
+            processarSnapshot(snapshot);
         } catch (e2) {
             el.innerHTML = `<div class="empty" style="color:var(--danger)"><i class="fas fa-circle-exclamation"></i>Erro ao carregar. Verifique o Firebase.</div>`;
         }
@@ -596,6 +671,15 @@ window.addEventListener("load", () => {
     console.log("🟢 Sistema Gerador de Assuntos carregado!");
     console.log("   cadastrarAssuntoTeste()  — insere 5 assuntos de exemplo");
     console.log("   listarTodosAssuntos()    — lista todos no console");
+
+    // Atalho de teclado: "/" foca a busca
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "/" && !["INPUT", "TEXTAREA"].includes(document.activeElement.tagName)) {
+            e.preventDefault();
+            mudarAba("buscar");
+            document.getElementById("busca").focus();
+        }
+    });
 
     if (auth) {
         auth.onAuthStateChanged((user) => {
