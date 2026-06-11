@@ -211,241 +211,152 @@ async function salvarAssunto() {
                 data_cadastro: firebase.firestore.FieldValue.serverTimestamp()
             });
             toast("Assunto cadastrado com sucesso!");
-            limparFormulario();
         }
-
+        limparFormulario();
         carregarAssuntosCadastrados();
     } catch (error) {
         console.error("Erro ao salvar:", error);
-        toast("Erro ao salvar assunto. Verifique o Firebase.", "error");
+        toast("Erro ao salvar assunto!", "error");
     } finally {
         if (btn) btn.disabled = false;
     }
 }
 
 function limparFormulario() {
-    document.getElementById("titulo").value    = "";
+    document.getElementById("titulo").value = "";
     document.getElementById("categoria").value = "";
     document.getElementById("descricao").value = "";
     limparChips();
+    editandoId = null;
+    document.getElementById("btn-cadastrar").textContent = "Cadastrar";
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  EDITAR ASSUNTO
-// ═══════════════════════════════════════════════════════════════
-async function editarAssunto(id) {
-    if (!id) return;
+async function removerAssunto(id, titulo) {
+    if (!confirm(`Remover "${titulo}"?`)) return;
+    try {
+        await assuntosRef.doc(id).delete();
+        toast("Assunto removido!");
+        carregarAssuntosCadastrados();
+    } catch (error) {
+        console.error("Erro ao remover:", error);
+        toast("Erro ao remover!", "error");
+    }
+}
 
+async function editarAssunto(id) {
     try {
         const doc = await assuntosRef.doc(id).get();
-        if (!doc.exists) { toast("Assunto não encontrado.", "error"); return; }
-
-        const a = doc.data();
-        document.getElementById("titulo").value    = a.titulo || "";
-        document.getElementById("categoria").value = a.categoria || "";
-        document.getElementById("descricao").value = a.descricao || "";
-        carregarChips(a.palavras_chave || []);
-
+        const dados = doc.data();
+        document.getElementById("titulo").value = dados.titulo || "";
+        document.getElementById("categoria").value = dados.categoria || "";
+        document.getElementById("descricao").value = dados.descricao || "";
+        carregarChips(dados.palavras_chave || []);
         editandoId = id;
-        document.getElementById("btn-label").textContent = "Atualizar Assunto";
-        document.getElementById("edit-mode-banner").classList.add("show");
-
-        // Muda para aba gerenciar e rola até o formulário
+        document.getElementById("btn-cadastrar").textContent = "Atualizar";
         mudarAba("gerenciar");
-        setTimeout(() => {
-            document.getElementById("titulo").scrollIntoView({ behavior: "smooth", block: "center" });
-            document.getElementById("titulo").focus();
-        }, 100);
+        document.getElementById("titulo").focus();
+        document.getElementById("titulo").scrollIntoView({ behavior: "smooth", block: "center" });
     } catch (error) {
-        console.error("Erro ao carregar assunto para edição:", error);
-        toast("Erro ao carregar assunto.", "error");
+        console.error("Erro ao editar:", error);
+        toast("Erro ao carregar assunto!", "error");
     }
 }
 
 function cancelarEdicao() {
-    editandoId = null;
-    document.getElementById("btn-label").textContent = "Cadastrar Assunto";
-    document.getElementById("edit-mode-banner").classList.remove("show");
     limparFormulario();
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  REMOVER ASSUNTO
+//  BUSCA
 // ═══════════════════════════════════════════════════════════════
-function removerAssunto(id, titulo) {
-    const li = document.getElementById("li-" + id);
-    if (!li) return;
-
-    li.innerHTML = `
-        <div class="info" style="color:var(--danger);font-size:.88rem;">
-            <strong>Remover "${sanitize(titulo)}"?</strong>
-        </div>
-        <div class="actions">
-            <button class="btn btn-danger btn-sm" data-confirm="sim">
-                <i class="fas fa-trash"></i> Sim
-            </button>
-            <button class="btn btn-ghost btn-sm" data-confirm="nao">
-                Cancelar
-            </button>
-        </div>
-    `;
-
-    li.querySelector('[data-confirm="sim"]').addEventListener("click", () => confirmarRemocao(id));
-    li.querySelector('[data-confirm="nao"]').addEventListener("click", () => filtrarLista());
-}
-
-async function confirmarRemocao(id) {
-    try {
-        await assuntosRef.doc(id).delete();
-        toast("Assunto removido.");
-        carregarAssuntosCadastrados();
-    } catch (error) {
-        console.error("Erro ao remover:", error);
-        toast("Erro ao remover assunto.", "error");
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════
-//  BUSCA — debounce para tempo real
-// ═══════════════════════════════════════════════════════════════
-function buscarDebounce() {
-    clearTimeout(debounceTimer);
-    const v = document.getElementById("busca").value.trim();
-    if (v.length < 3) return; // só busca a partir de 3 letras
-    debounceTimer = setTimeout(() => buscarAssuntos(), 400);
-}
-
-async function buscarAssuntos() {
-    const textoBusca = document.getElementById("busca").value.trim();
-
-    if (!textoBusca) {
-        toast("Digite alguma palavra para buscar!", "error");
+function buscar() {
+    const termo = document.getElementById("busca").value.trim();
+    if (!termo) {
+        document.getElementById("resultados").innerHTML = "";
         return;
     }
 
-    const palavrasBusca = textoBusca
-        .toLowerCase()
-        .split(/\s+/)
-        .map(p => p.trim())
-        .filter(p => p.length >= 2);
-
-    if (palavrasBusca.length === 0) {
-        toast("Digite palavras com pelo menos 2 letras.", "error");
-        return;
+    // Armazena buscas recentes
+    if (!buscasRecentes.includes(termo)) {
+        buscasRecentes.unshift(termo);
+        if (buscasRecentes.length > 5) buscasRecentes.pop();
+        atualizarBuscasRecentes();
     }
-
-    // Salva na lista de buscas recentes
-    salvarBuscaRecente(textoBusca);
 
     const el = document.getElementById("resultados");
-    el.innerHTML = `<div class="empty"><i class="fas fa-spinner fa-spin"></i>Buscando<span class="loading-dots"></span></div>`;
+    el.innerHTML = '<div style="text-align:center;padding:20px;"><i class="fas fa-circle-notch fa-spin"></i> Buscando…</div>';
 
-    try {
-        const snapshot = await assuntosRef.limit(LIMITE_BUSCA).get();
-        const resultados = [];
+    const palavrasBusca = termo.toLowerCase().split(/\s+/);
 
-        snapshot.forEach(doc => {
-            const assunto = doc.data();
-            const relevancia = calcularRelevancia(assunto.palavras_chave || [], palavrasBusca);
-            if (relevancia > 0) {
-                resultados.push({ id: doc.id, ...assunto, relevancia });
+    assuntosRef
+        .limit(LIMITE_BUSCA)
+        .get()
+        .then(snapshot => {
+            const assuntos = [];
+            snapshot.forEach(doc => {
+                const a = doc.data();
+                const titulo = (a.titulo || "").toLowerCase();
+                const descricao = (a.descricao || "").toLowerCase();
+                const palavras = (a.palavras_chave || []).map(p => p.toLowerCase());
+
+                let relevancia = 0;
+                palavrasBusca.forEach(b => {
+                    if (titulo.includes(b)) relevancia += 40;
+                    if (descricao.includes(b)) relevancia += 20;
+                    if (palavras.some(p => p.includes(b))) relevancia += 30;
+                });
+
+                if (relevancia > 0) {
+                    assuntos.push({
+                        id: doc.id,
+                        ...a,
+                        relevancia: Math.min(relevancia, 100)
+                    });
+                }
+            });
+
+            assuntos.sort((a, b) => b.relevancia - a.relevancia);
+
+            if (assuntos.length === 0) {
+                el.innerHTML = `
+                    <div class="empty">
+                        <i class="fas fa-inbox"></i>
+                        Nenhum resultado para "<strong>${sanitize(termo)}</strong>".
+                        <button class="btn btn-primary" style="margin-top:12px;" onclick="irParaCadastro('${sanitize(termo).replace(/'/g, "\\'")}')">
+                            Criar novo assunto
+                        </button>
+                    </div>`;
+                return;
             }
+
+            renderResultados(assuntos, palavrasBusca);
+        })
+        .catch(error => {
+            console.error("Erro na busca:", error);
+            el.innerHTML = `<div class="empty" style="color:var(--danger)"><i class="fas fa-circle-exclamation"></i>Erro na busca</div>`;
         });
-
-        resultados.sort((a, b) => b.relevancia - a.relevancia);
-        mostrarResultados(resultados, palavrasBusca, textoBusca);
-    } catch (error) {
-        console.error("Erro na busca:", error);
-        el.innerHTML = `<div class="empty" style="color:var(--danger)"><i class="fas fa-circle-exclamation"></i>Erro ao buscar. Verifique o Firebase.</div>`;
-    }
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  BUSCAS RECENTES
-// ═══════════════════════════════════════════════════════════════
-function salvarBuscaRecente(termo) {
-    buscasRecentes = [termo, ...buscasRecentes.filter(t => t !== termo)].slice(0, 5);
-    renderBuscasRecentes();
-}
-
-function renderBuscasRecentes() {
-    const container = document.getElementById("recent-searches");
-    const chips     = document.getElementById("recent-chips");
-    if (!container || !chips) return;
-
+function atualizarBuscasRecentes() {
+    const el = document.getElementById("buscas-recentes");
+    if (!el) return;
     if (buscasRecentes.length === 0) {
-        container.style.display = "none";
+        el.innerHTML = "";
         return;
     }
-
-    container.style.display = "flex";
-    chips.innerHTML = buscasRecentes.map((t, i) =>
-        `<span class="recent-chip" data-recent-idx="${i}">${sanitize(t)}</span>`
+    el.innerHTML = "📌 RECENTES: " + buscasRecentes.map(t => 
+        `<button class="btn-tag-recent" onclick="document.getElementById('busca').value='${sanitize(t).replace(/"/g, '&quot;')}'; buscar()">${sanitize(t)}</button>`
     ).join("");
-
-    chips.querySelectorAll("[data-recent-idx]").forEach(chip => {
-        chip.addEventListener("click", () => {
-            usarBuscaRecente(buscasRecentes[parseInt(chip.dataset.recentIdx)]);
-        });
-    });
 }
 
-function usarBuscaRecente(termo) {
-    document.getElementById("busca").value = termo;
-    buscarAssuntos();
-}
-
-// ═══════════════════════════════════════════════════════════════
-//  ALGORITMO DE RELEVÂNCIA
-// ═══════════════════════════════════════════════════════════════
-function calcularRelevancia(palavrasAssunto, palavrasBusca) {
-    if (!palavrasAssunto || palavrasAssunto.length === 0) return 0;
-
-    let pontos = 0;
-    const palavrasLower = palavrasAssunto.map(p => p.toLowerCase());
-
-    for (const busca of palavrasBusca) {
-        for (const palavra of palavrasLower) {
-            if (palavra === busca) {
-                pontos += 4;
-            } else if (palavra.includes(busca) || busca.includes(palavra)) {
-                pontos += 2;
-            } else if (palavra.length >= 3 && busca.length >= 3 &&
-                       palavra.substring(0, 3) === busca.substring(0, 3)) {
-                pontos += 1;
-            }
-        }
-    }
-
-    const maxPontos = palavrasBusca.length * palavrasAssunto.length * 4;
-    return maxPontos > 0 ? Math.min(100, Math.round((pontos / maxPontos) * 100)) : 0;
-}
-
-// ═══════════════════════════════════════════════════════════════
-//  RENDERIZAR RESULTADOS
-// ═══════════════════════════════════════════════════════════════
-function mostrarResultados(assuntos, palavrasBusca, termoBusca) {
+function renderResultados(assuntos, palavrasBusca = []) {
     const el = document.getElementById("resultados");
-
     if (assuntos.length === 0) {
-        el.innerHTML = `
-            <div class="empty-cta">
-                <i class="fas fa-face-frown-open"></i>
-                Nenhum assunto encontrado para <span class="search-term">"${sanitize(termoBusca)}"</span>
-                <br><small style="color:var(--ink-muted)">Que tal cadastrar esse assunto agora?</small>
-                <br>
-                <button class="btn btn-primary btn-sm" id="btn-cta-cadastrar">
-                    <i class="fas fa-plus"></i> Cadastrar "${sanitize(termoBusca)}"
-                </button>
-            </div>`;
-        document.getElementById("btn-cta-cadastrar")
-            .addEventListener("click", () => irParaCadastro(termoBusca));
+        el.innerHTML = "<div class='empty'>Nenhum resultado.</div>";
         return;
     }
 
-    let html = `<p style="font-size:.82rem;color:var(--ink-muted);margin-bottom:14px;">
-        ${assuntos.length} assunto(s) encontrado(s) — ordenado por relevância
-    </p>`;
+    let html = `<div style="margin-bottom:10px;color:var(--ink-muted);">${assuntos.length} assunto(s) encontrado(s) — ordenado por relevância</div>`;
 
     assuntos.forEach((a, idx) => {
         const tags = (a.palavras_chave || []).map(t => {
@@ -469,7 +380,7 @@ function mostrarResultados(assuntos, palavrasBusca, termoBusca) {
             <div class="tags">${tags}</div>
             ${temDesc ? `<div class="result-desc">${sanitize(a.descricao)}</div>` : ''}
             <div class="result-actions">
-                <button class="btn btn-primary btn-sm" data-action="usar" data-titulo="${sanitize(a.titulo).replace(/"/g, '&quot;')}">
+                <button class="btn btn-primary btn-sm" data-action="usar" data-descricao="${sanitize(a.descricao).replace(/"/g, '&quot;')}">
                     <i class="fas fa-copy"></i> Usar este assunto
                 </button>
                 <button class="btn btn-ghost btn-icon" data-action="editar" data-id="${sanitize(a.id)}" title="Editar">
@@ -488,7 +399,7 @@ function mostrarResultados(assuntos, palavrasBusca, termoBusca) {
     el.querySelectorAll("[data-action]").forEach(btn => {
         btn.addEventListener("click", () => {
             const action = btn.dataset.action;
-            if (action === "usar") usarAssunto(btn.dataset.titulo);
+            if (action === "usar") usarAssunto(btn.dataset.descricao);
             if (action === "editar") editarAssunto(btn.dataset.id);
             if (action === "expandir") {
                 const item = document.getElementById("result-" + btn.dataset.idx);
@@ -513,11 +424,15 @@ function irParaCadastro(termoBusca) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  USAR ASSUNTO
+//  USAR ASSUNTO (COPIAR DESCRIÇÃO)
 // ═══════════════════════════════════════════════════════════════
-function usarAssunto(titulo) {
-    navigator.clipboard?.writeText(titulo).catch(() => {});
-    toast(`✓ "${titulo}" copiado para a área de transferência!`);
+function usarAssunto(descricao) {
+    if (!descricao) {
+        toast("Sem descrição para copiar!", "error");
+        return;
+    }
+    navigator.clipboard?.writeText(descricao).catch(() => {});
+    toast(`✓ Descrição copiada para a área de transferência!`);
 }
 
 // ═══════════════════════════════════════════════════════════════
