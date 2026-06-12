@@ -220,6 +220,26 @@ function editarAssunto(id) {
 
 function cancelarEdicao() { limparFormulario(); }
 
+function duplicarAssunto(id) {
+    const a = listaCache.find(x => x.id === id);
+    if (!a) return;
+    document.getElementById("titulo").value = "Copia de " + (a.titulo || "");
+    document.getElementById("categoria").value = a.categoria || "";
+    document.getElementById("assunto").value = a.descricao || "";
+    carregarChips(a.palavras_chave || []);
+    editandoId = null;
+    document.getElementById("btn-label").textContent = "Cadastrar Assunto";
+    const banner = document.getElementById("edit-mode-banner");
+    if (banner) banner.classList.remove("show");
+    irPara("gerenciar");
+    setTimeout(() => {
+        const t = document.getElementById("titulo");
+        t.focus(); t.select();
+        t.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 150);
+    toast("Campos copiados! Edite o titulo e clique em Cadastrar.", "info");
+}
+
 // BUSCA
 function buscarDebounce() {
     clearTimeout(debounceTimer);
@@ -520,6 +540,7 @@ function renderItemLista(item) {
     return '<li><div class="info"><strong>' + sanitize(item.titulo) + '</strong>' +
         '<small>' + (item.palavras_chave || []).map(sanitize).join(" &middot; ") + '</small></div>' +
         '<div class="actions">' +
+        '<button class="btn btn-ghost btn-icon" onclick="duplicarAssunto(\'' + item.id + '\')" title="Duplicar — copia todos os campos para um novo cadastro"><i class="fas fa-copy"></i></button>' +
         '<button class="btn btn-ghost btn-icon" onclick="editarAssunto(\'' + item.id + '\')" title="Editar"><i class="fas fa-pencil"></i></button>' +
         '<button class="btn btn-danger-ghost btn-icon" onclick="removerAssunto(\'' + item.id + '\',\'' + sanitize(item.titulo).replace(/'/g, "\\'") + '\')" title="Remover"><i class="fas fa-trash"></i></button>' +
         '</div></li>';
