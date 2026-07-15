@@ -796,6 +796,12 @@ textarea {
     <button class="nav-btn ativo" data-tela="buscar" onclick="irPara('buscar')">
         <i class="nav-icon fas fa-magnifying-glass"></i> Buscar assunto
     </button>
+    <button class="nav-btn" data-tela="buscar-oficio" onclick="irPara('buscar-oficio')">
+        <i class="nav-icon fas fa-file-invoice"></i> Busca de Ofício
+    </button>
+    <button class="nav-btn" data-tela="cadastro-oficio" onclick="irPara('cadastro-oficio')">
+        <i class="nav-icon fas fa-file-signature"></i> Cadastro de Ofício
+    </button>
     <button class="nav-btn" data-tela="gerenciar" onclick="irPara('gerenciar')">
         <i class="nav-icon fas fa-sliders"></i> Gerenciar
     </button>
@@ -949,6 +955,140 @@ textarea {
 </div>
 
 <!-- ══════════════════════════════════════════════════════════
+     TELA: MODELOS DE OFÍCIO
+══════════════════════════════════════════════════════════ -->
+<!-- ══════════════════════════════════════════════════════════
+     TELA: BUSCA DE OFÍCIO
+══════════════════════════════════════════════════════════ -->
+<div class="tela" id="tela-buscar-oficio">
+    <div class="container">
+
+        <div class="busca-hero" style="background: linear-gradient(135deg, var(--green-900) 0%, var(--green-700) 100%);">
+            <h2><i class="fas fa-file-invoice" style="opacity:.7;margin-right:8px"></i>Consultar Modelos de Ofício</h2>
+            <p>Digite palavras-chave do documento ou do assunto vinculado para encontrar e preencher modelos oficiais.</p>
+            <div class="busca-wrap">
+                <i class="fas fa-magnifying-glass icon-busca"></i>
+                <input type="text" id="busca-modelos"
+                       placeholder="Ex: Ofício de remarcação de férias..."
+                       oninput="buscarModelosDebounce()">
+                <button class="btn-limpar-busca" id="limpar-busca-modelos" onclick="limparBuscaModelos()" title="Limpar busca" style="display: none;">
+                    <i class="fas fa-xmark"></i>
+                </button>
+            </div>
+        </div>
+
+        <div id="resultados_modelos">
+            <div class="empty">
+                <i class="fas fa-magnifying-glass"></i>
+                <p>Digite acima para encontrar modelos de ofício</p>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     TELA: CADASTRO E GESTÃO DE OFÍCIO
+══════════════════════════════════════════════════════════ -->
+<div class="tela" id="tela-cadastro-oficio">
+    <div class="container">
+        <div class="gerenciar-layout">
+
+            <!-- ── FORMULÁRIO DE CADASTRO ── -->
+            <div class="form-card" id="card-form-modelo">
+                <div class="form-card-header" style="background: linear-gradient(90deg, var(--green-800), var(--green-700));">
+                    <h2>
+                        <i class="fas fa-plus-circle"></i>
+                        <span id="btn-label-modelo">Cadastrar Modelo de Ofício</span>
+                    </h2>
+                </div>
+
+                <div class="form-card-body">
+                    <div id="edit-mode-banner-modelo" style="display:none; background:var(--warning-lt); border:1.5px solid #ffc107; border-radius:var(--r-sm); padding:12px 16px; font-size:.87rem; color:var(--warning); align-items:center; gap:10px; margin-bottom:20px;">
+                        <i class="fas fa-pencil"></i>
+                        <span><strong>Modo edição ativo</strong> — alterações no modelo selecionado.</span>
+                        <button onclick="cancelarEdicaoModelo()" title="Cancelar edição" style="margin-left:auto; background:none; border:none; color:var(--warning); cursor:pointer; font-size:1.05rem;">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+
+                    <!-- Linha 1: Título -->
+                    <div class="form-row cols-1">
+                        <div class="form-group">
+                            <label for="modelo-titulo">Título do Modelo <span class="obrig">*</span></label>
+                            <input type="text" id="modelo-titulo" placeholder="Ex: Ofício de Solicitação de Apoio Institucional">
+                            <span class="field-hint"><i class="fas fa-info-circle"></i> Nome descritivo para identificar e localizar o modelo</span>
+                        </div>
+                    </div>
+
+                    <!-- Linha 2: Descrição -->
+                    <div class="form-row cols-1">
+                        <div class="form-group">
+                            <label for="modelo-descricao">Descrição Curta</label>
+                            <input type="text" id="modelo-descricao" placeholder="Ex: Modelo de ofício padrão para solicitar cooperação operacional entre órgãos públicos">
+                        </div>
+                    </div>
+
+                    <!-- Linha 3: Assuntos Vinculados -->
+                    <div class="form-row cols-1">
+                        <div class="form-group">
+                            <label>Vincular a Assuntos Cadastrados</label>
+                            <div id="assuntos-vinculo-container" style="max-height: 160px; overflow-y: auto; border: 1.5px solid var(--border); border-radius: var(--r-sm); padding: 12px; background: var(--surface); display: flex; flex-direction: column; gap: 8px;">
+                                <div class="empty-mini">Nenhum assunto cadastrado para vincular</div>
+                            </div>
+                            <span class="field-hint"><i class="fas fa-info-circle"></i> O modelo ficará associado a estes assuntos para consulta rápida</span>
+                        </div>
+                    </div>
+
+                    <!-- Linha 4: Corpo do Ofício -->
+                    <div class="form-row cols-1">
+                        <div class="form-group">
+                            <label for="modelo-corpo">
+                                Corpo do Documento <span class="obrig">*</span>
+                                <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--ink-muted);margin-left:6px">— use XX para campos variáveis</span>
+                            </label>
+                            <textarea id="modelo-corpo" rows="12"
+                                      placeholder="Ex de texto do modelo:&#10;Ofício nº XX/202X-SEC&#10;&#10;Ao Senhor XX&#10;Diretor da Secretaria de XX&#10;&#10;Assunto: XX&#10;&#10;Senhor Diretor,&#10;Solicito a Vossa Senhoria providenciar XX para o servidor XX..."></textarea>
+                            <span class="field-hint" style="color:var(--green-700)">
+                                <i class="fas fa-lightbulb"></i> Use <strong>XX</strong> (duas letras X maiúsculas) onde houver partes que mudam a cada envio.
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button class="btn btn-primary btn-lg" id="btn-cadastrar-modelo" onclick="salvarModelo()">
+                        <i class="fas fa-save"></i> <span id="btn-label-modelo-txt">Cadastrar Modelo</span>
+                    </button>
+                    <button class="btn btn-ghost" onclick="limparFormularioModelo()" title="Limpar formulário">
+                        <i class="fas fa-eraser"></i> Limpar
+                    </button>
+                </div>
+            </div>
+
+            <!-- ── LISTA DE MODELOS (GESTÃO) ── -->
+            <div class="lista-card">
+                <div class="lista-card-header">
+                    <h3><i class="fas fa-list-ul"></i> Modelos Cadastrados</h3>
+                    <span class="badge-count" id="lista-modelos-count">—</span>
+                </div>
+                <div class="lista-filtro-wrap">
+                    <input type="text" id="filtro-lista-modelos-input"
+                           placeholder="🔍  Filtrar por título ou descrição..."
+                           oninput="filtrarListaModelos()">
+                </div>
+                <div class="lista-body">
+                    <div id="lista_modelos">
+                        <div class="empty-mini"><i class="fas fa-circle-notch fa-spin"></i> Carregando…</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
      MODAL: PREENCHER XX
 ══════════════════════════════════════════════════════════ -->
 <div id="modal-preencher">
@@ -975,6 +1115,35 @@ textarea {
         </div>
     </div>
 </div>
+
+<!-- ══════════════════════════════════════════════════════════
+     MODAL: PREENCHER MODELO XX
+══════════════════════════════════════════════════════════ -->
+<div id="modal-preencher-modelo" style="display:none; position:fixed; inset:0; z-index:500; background:rgba(10,20,15,.55); backdrop-filter:blur(4px); align-items:center; justify-content:center; padding:20px;">
+    <div class="modal-box" style="max-width: 800px; width: 100%;">
+        <div class="modal-header">
+            <div>
+                <h3><i class="fas fa-file-pen"></i> Preencher Modelo de Ofício</h3>
+                <p id="modal-titulo-modelo" style="color: rgba(255,255,255,0.7); font-size: 0.85rem; margin-top: 4px;"></p>
+            </div>
+            <button class="modal-close" onclick="fecharModalModelo()"><i class="fas fa-xmark"></i></button>
+        </div>
+        <div class="modal-body">
+            <div id="modal-campos-modelo" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;"></div>
+            <div class="modal-preview-label"><i class="fas fa-eye"></i> Prévia do Documento</div>
+            <div id="modal-preview-modelo" style="background:var(--sand-200); border-left:3px solid var(--accent); border-radius:0 var(--r-sm) var(--r-sm) 0; padding:16px; font-size:.9rem; line-height:1.6; color:var(--ink); white-space: pre-wrap; font-family: monospace; max-height: 320px; overflow-y: auto; margin-bottom: 12px;"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost btn-sm" onclick="copiarModeloSemPreencher()">
+                <i class="fas fa-copy"></i> Copiar original
+            </button>
+            <button class="btn btn-primary" onclick="confirmarPreenchimentoModelo()">
+                <i class="fas fa-copy"></i> Copiar preenchido
+            </button>
+        </div>
+    </div>
+</div>
+
 
 <!-- ══════════════════════════════════════════════════════════
      PAINEL: HISTÓRICO

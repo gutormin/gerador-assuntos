@@ -12,12 +12,13 @@ const firebaseConfig = {
   measurementId:     "G-8K0EEXN066"
 };
 
-let db, assuntosRef, auth;
+let db, assuntosRef, modelosRef, auth;
 
 try {
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
     assuntosRef = db.collection("assuntos");
+    modelosRef = db.collection("modelos_oficio");
     auth = firebase.auth();
     auth.signInAnonymously().catch((err) => {
         console.error("Erro na autenticacao anonima:", err);
@@ -41,6 +42,11 @@ let categoriasCache = new Set();
 let debounceTimer   = null;
 let listaCache      = [];
 let categoriaFiltro = null;
+
+let editandoModeloId     = null;
+let listaModelosCache    = [];
+let debounceTimerModelos = null;
+const LS_MODELOS         = "ga_modelos";
 
 const LIMITE = 500;
 
@@ -71,6 +77,15 @@ function irPara(tela) {
         renderInicio();
     }
     if (tela === "gerenciar") carregarAssuntos();
+    if (tela === "buscar-oficio") {
+        carregarModelos();
+        setTimeout(() => document.getElementById("busca-modelos")?.focus(), 100);
+    }
+    if (tela === "cadastro-oficio") {
+        carregarModelos();
+        renderAssuntosCheckboxes();
+        setTimeout(() => document.getElementById("modelo-titulo")?.focus(), 100);
+    }
     window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -270,7 +285,9 @@ function buscarAssuntos() {
 
     const palavras = termo.split(/\s+/).filter(Boolean);
     const resultados = [];
+    const modelosResultados = [];
 
+    // Busca nos assuntos
     listaCache.forEach(a => {
         if (categoriaFiltro && (a.categoria || "Geral") !== categoriaFiltro) return;
         const titulo = (a.titulo || "").toLowerCase();
@@ -289,8 +306,26 @@ function buscarAssuntos() {
         if (rel > 0) resultados.push(Object.assign({}, a, { relevancia: Math.min(rel, 100) }));
     });
 
+    // Busca nos modelos de ofício
+    if (palavras.length > 0 && !categoriaFiltro) {
+        listaModelosCache.forEach(m => {
+            const tit = (m.titulo || "").toLowerCase();
+            const desc = (m.descricao || "").toLowerCase();
+            const corp = (m.corpo || "").toLowerCase();
+            let rel = 0;
+            palavras.forEach(b => {
+                if (tit.includes(b)) rel += 40;
+                if (desc.includes(b)) rel += 20;
+                if (corp.includes(b)) rel += 10;
+            });
+            if (rel > 0) modelosResultados.push(Object.assign({}, m, { relevancia: Math.min(rel, 100) }));
+        });
+    }
+
     resultados.sort((a, b) => b.relevancia - a.relevancia);
-    renderResultados(resultados, palavras, termo);
+    modelosResultados.sort((a, b) => b.relevancia - a.relevancia);
+    
+    renderResultados(resultados, palavras, termo, modelosResultados);
 }
 
 // TELA INICIAL DA BUSCA
@@ -337,18 +372,72 @@ function renderFiltrosCategoria() {
     ).join("");
 }
 
-function renderResultados(resultados, palavras, termo) {
+function renderResultados(resultados, palavras, termo, modelosResultados) {
     const el = document.getElementById("resultados");
     renderFiltrosCategoria();
-    if (resultados.length === 0) {
+    
+    modelosResultados = modelosResultados || [];
+    
+    if (resultados.length === 0 && modelosResultados.length === 0) {
         el.innerHTML = '<div class="empty"><i class="fas fa-magnifying-glass"></i><p>Nada encontrado' + (termo ? ' para "<strong>' + sanitize(termo) + '</strong>"' : "") + '.</p><button class="btn btn-ghost" onclick="irParaCadastro(\'' + sanitize(termo).replace(/'/g, "\\'") + '\')"><i class="fas fa-plus"></i> Cadastrar novo assunto</button></div>';
         return;
     }
-    const cont = resultados.length === 1 ? "1 resultado" : (resultados.length + " resultados");
-    let html = '<div class="resultado-contador">' + cont + (categoriaFiltro ? ' em <strong>' + sanitize(categoriaFiltro) + '</strong>' : "") + '</div>';
-    html += resultados.map(a => cardAssunto(a, palavras)).join("");
+    
+    let html = "";
+    
+    if (resultados.length > 0) {
+        const cont = resultados.length === 1 ? "1 assunto encontrado" : (resultados.length + " assuntos encontrados");
+        html += '<div class="resultado-contador">' + cont + (categoriaFiltro ? ' em <strong>' + sanitize(categoriaFiltro) + '</strong>' : "") + '</div>';
+        html += resultados.map(a => cardAssunto(a, palavras)).join("");
+    }
+    
+    if (modelosResultados.length > 0) {
+        html += '<div class="secao-titulo" style="margin-top: 24px;"><i class="fas fa-file-invoice"></i> Modelos de Ofício Encontrados</div>';
+        html += modelosResultados.map(m => {
+            const temXX = /X{2,}/.test(m.corpo || "");
+            const vincs = (m.assuntos_vinculados || []).map(sid => {
+                const ass = listaCache.find(a => a.id === sid);
+                return ass ? sanitize(ass.titulo) : null;
+            }).filter(Boolean);
+            
+            const vincText = vincs.length > 0 
+                ? '<div style="margin-top: 4px; font-size: 0.76rem; color: var(--green-700);"><i class="fas fa-link"></i> Vinculado a: ' + vincs.join(", ") + '</div>' 
+                : '';
+
+            const corpoToggle = m.corpo 
+                ? '<div class="card-modelo-corpo-toggle" style="margin-top: 8px; margin-bottom: 8px;">' +
+                    '<button type="button" onclick="toggleCorpoCard(this)" style="background: none; border: none; color: var(--accent); font-size: 0.8rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 0; outline: none;">' +
+                        '<i class="fas fa-chevron-down"></i> Ver corpo do documento' +
+                    '</button>' +
+                    '<div class="modelo-corpo-completo" style="display: none; margin-top: 8px; background: var(--sand-200); padding: 12px; border-radius: var(--r-sm); font-size: 0.82rem; font-family: monospace; white-space: pre-wrap; color: var(--ink); border-left: 3px solid var(--accent); line-height: 1.5; max-height: 180px; overflow-y: auto;">' + sanitize(m.corpo) + '</div>' +
+                  '</div>'
+                : '';
+
+            return '<div class="card-assunto card-modelo-resultado" data-modelo-id="' + m.id + '" style="border-color: var(--border); margin-bottom: 12px;">' +
+                '<div class="card-top">' +
+                    '<div class="card-cat"><i class="fas fa-file-invoice"></i> Modelo de Ofício</div>' +
+                '</div>' +
+                '<h3 class="card-titulo">' + sanitize(m.titulo) + '</h3>' +
+                (m.descricao ? '<p style="font-size: 0.85rem; color: var(--ink-muted); margin-bottom: 4px;">' + sanitize(m.descricao) + '</p>' : "") +
+                vincText +
+                corpoToggle +
+                '<div class="card-acoes" style="margin-top: 10px;">' +
+                    '<button type="button" class="btn btn-primary btn-sm btn-copiar-modelo-sug" data-modelo-sug-id="' + m.id + '"><i class="fas fa-file-pen"></i> ' + (temXX ? "Preencher e copiar" : "Copiar documento") + '</button>' +
+                '</div>' +
+            '</div>';
+        }).join("");
+    }
+    
     el.innerHTML = html;
     ligarEventosCards(el);
+    
+    // Liga eventos específicos dos botões de preenchimento dos modelos encontrados
+    el.querySelectorAll(".btn-copiar-modelo-sug").forEach(b => {
+        b.addEventListener("click", (e) => {
+            e.stopPropagation();
+            abrirPreenchimentoModeloPorId(b.dataset.modeloSugId);
+        });
+    });
 }
 
 // CARD
@@ -362,6 +451,22 @@ function cardAssunto(a, palavras) {
     const temXX = /X{2,}/.test(a.descricao || "");
     const preview = sanitize(a.descricao || "");
 
+    // Modelos vinculados sugeridos
+    const modelosSugeridos = listaModelosCache.filter(m => m.assuntos_vinculados && m.assuntos_vinculados.includes(a.id));
+    let htmlModelos = "";
+    if (modelosSugeridos.length > 0) {
+        htmlModelos = '<div class="modelos-sugeridos" style="margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border); display: flex; flex-direction: column; gap: 6px;">' +
+            '<span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: var(--ink-muted); display: flex; align-items: center; gap: 5px;"><i class="fas fa-file-invoice"></i> Modelos de Ofício sugeridos:</span>' +
+            '<div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px;">' +
+            modelosSugeridos.map(m => 
+                '<button type="button" class="btn btn-outline btn-sm btn-modelo-sug" data-modelo-sug-id="' + m.id + '" style="padding: 4px 10px; font-size: 0.75rem; min-height: 28px; display: inline-flex; align-items: center; gap: 5px;">' +
+                '<i class="fas fa-file-signature"></i> ' + sanitize(m.titulo) +
+                '</button>'
+            ).join("") +
+            '</div>' +
+            '</div>';
+    }
+
     return '<div class="card-assunto" data-id="' + a.id + '">' +
         '<div class="card-top">' +
             '<div class="card-cat"><i class="fas fa-folder"></i> ' + sanitize(a.categoria || "Geral") + '</div>' +
@@ -370,7 +475,8 @@ function cardAssunto(a, palavras) {
         '<h3 class="card-titulo">' + sanitize(a.titulo) + '</h3>' +
         (tags ? '<div class="card-tags">' + tags + '</div>' : "") +
         '<div class="card-assunto-texto">' + preview + '</div>' +
-        '<div class="card-acoes">' +
+        htmlModelos +
+        '<div class="card-acoes" style="margin-top: 14px;">' +
             '<button class="btn btn-primary btn-copiar" data-copiar="' + a.id + '"><i class="fas fa-copy"></i> ' + (temXX ? "Preencher e copiar" : "Copiar assunto") + '</button>' +
             '<button class="btn btn-ghost btn-icon" data-editar="' + a.id + '" title="Editar"><i class="fas fa-pencil"></i></button>' +
         '</div>' +
@@ -381,6 +487,12 @@ function ligarEventosCards(container) {
     container.querySelectorAll("[data-copiar]").forEach(b => b.addEventListener("click", () => acaoCopiar(b.dataset.copiar)));
     container.querySelectorAll("[data-editar]").forEach(b => b.addEventListener("click", () => editarAssunto(b.dataset.editar)));
     container.querySelectorAll("[data-fav]").forEach(b => b.addEventListener("click", () => toggleFavorito(b.dataset.fav)));
+    container.querySelectorAll(".btn-modelo-sug").forEach(b => {
+        b.addEventListener("click", (e) => {
+            e.stopPropagation();
+            abrirPreenchimentoModeloPorId(b.dataset.modeloSugId);
+        });
+    });
 }
 
 // FAVORITOS
@@ -633,6 +745,459 @@ async function cadastrarAssuntoTeste() {
     carregarAssuntos();
 }
 
+// ═══════════════════════════════════════════════════════════════
+//  MÓDULO: MODELOS DE OFÍCIO
+// ═══════════════════════════════════════════════════════════════
+
+function renderAssuntosCheckboxes() {
+    const cont = document.getElementById("assuntos-vinculo-container");
+    if (!cont) return;
+    if (listaCache.length === 0) {
+        cont.innerHTML = '<div class="empty-mini">Nenhum assunto cadastrado para vincular</div>';
+        return;
+    }
+    cont.innerHTML = listaCache.map(a => 
+        '<label class="checkbox-group" style="display: flex; align-items: center; gap: 8px; font-size: 0.88rem; cursor: pointer; padding: 4px 0;">' +
+        '<input type="checkbox" name="assunto-vinc" value="' + a.id + '" style="width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer;">' +
+        '<span>' + sanitize(a.titulo) + ' <small style="color: var(--ink-muted);">(' + sanitize(a.categoria || "Geral") + ')</small></span>' +
+        '</label>'
+    ).join("");
+}
+
+async function salvarModelo() {
+    const titulo = document.getElementById("modelo-titulo").value.trim();
+    const descricao = document.getElementById("modelo-descricao").value.trim();
+    const corpo = document.getElementById("modelo-corpo").value.trim();
+
+    if (!titulo) { toast("Preencha o título do modelo.", "error"); document.getElementById("modelo-titulo").focus(); return; }
+    if (!corpo) { toast("Preencha o corpo do documento.", "error"); document.getElementById("modelo-corpo").focus(); return; }
+
+    const vinculos = [];
+    document.querySelectorAll('input[name="assunto-vinc"]:checked').forEach(cb => {
+        vinculos.push(cb.value);
+    });
+
+    const dados = {
+        titulo: titulo,
+        descricao: descricao,
+        corpo: corpo,
+        assuntos_vinculados: vinculos
+    };
+
+    const btn = document.getElementById("btn-cadastrar-modelo");
+    if (btn) btn.disabled = true;
+
+    try {
+        let salvoNoFirebase = false;
+        if (modelosRef) {
+            try {
+                if (editandoModeloId && !editandoModeloId.toString().startsWith("loc_")) {
+                    await modelosRef.doc(editandoModeloId).update(Object.assign({}, dados, { data_atualizacao: firebase.firestore.FieldValue.serverTimestamp() }));
+                    toast("Modelo de ofício atualizado!");
+                } else {
+                    await modelosRef.add(Object.assign({}, dados, { data_cadastro: firebase.firestore.FieldValue.serverTimestamp() }));
+                    toast("Modelo de ofício cadastrado!");
+                }
+                salvoNoFirebase = true;
+                if (editandoModeloId) cancelarEdicaoModelo();
+            } catch (fbError) {
+                console.warn("Erro ao salvar no Firebase, tentando LocalStorage:", fbError);
+            }
+        }
+
+        if (!salvoNoFirebase) {
+            let localModelos = lsGet(LS_MODELOS, []);
+            if (editandoModeloId) {
+                localModelos = localModelos.map(m => m.id === editandoModeloId ? Object.assign(m, dados, { data_atualizacao: Date.now() }) : m);
+                toast("Modelo atualizado localmente (Firebase offline ou sem permissão)!", "info");
+                cancelarEdicaoModelo();
+            } else {
+                const novo = Object.assign({ id: "loc_" + Date.now() }, dados, { data_cadastro: Date.now() });
+                localModelos.push(novo);
+                toast("Modelo cadastrado localmente (Firebase offline ou sem permissão)!", "info");
+            }
+            lsSet(LS_MODELOS, localModelos);
+        }
+        limparFormularioModelo();
+        carregarModelos();
+    } catch (error) {
+        console.error("Erro ao salvar modelo:", error);
+        toast("Erro ao salvar modelo.", "error");
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+function limparFormularioModelo() {
+    document.getElementById("modelo-titulo").value = "";
+    document.getElementById("modelo-descricao").value = "";
+    document.getElementById("modelo-corpo").value = "";
+    document.querySelectorAll('input[name="assunto-vinc"]:checked').forEach(cb => cb.checked = false);
+    editandoModeloId = null;
+    document.getElementById("btn-label-modelo-txt").textContent = "Cadastrar Modelo";
+    const banner = document.getElementById("edit-mode-banner-modelo");
+    if (banner) banner.style.display = "none";
+}
+
+function cancelarEdicaoModelo() {
+    limparFormularioModelo();
+}
+
+async function carregarModelos() {
+    try {
+        if (modelosRef) {
+            let snap;
+            try { 
+                snap = await modelosRef.orderBy("data_cadastro", "desc").limit(LIMITE).get(); 
+            } catch (orderError) {
+                console.warn("Tentando carregar modelos sem ordenação:", orderError);
+                snap = await modelosRef.limit(LIMITE).get();
+            }
+            
+            listaModelosCache = [];
+            snap.forEach(doc => {
+                listaModelosCache.push(Object.assign({ id: doc.id }, doc.data()));
+            });
+        } else {
+            listaModelosCache = lsGet(LS_MODELOS, []);
+        }
+        atualizarContadorModelos(listaModelosCache.length);
+        renderListaModelos(listaModelosCache);
+    } catch (error) {
+        console.warn("Erro ao carregar modelos do Firebase. Usando LocalStorage:", error);
+        listaModelosCache = lsGet(LS_MODELOS, []);
+        atualizarContadorModelos(listaModelosCache.length);
+        renderListaModelos(listaModelosCache);
+    }
+}
+
+function atualizarContadorModelos(n) {
+    const mc = document.getElementById("lista-modelos-count");
+    if (mc) mc.textContent = n + (n === 1 ? " modelo" : " modelos");
+}
+
+function renderListaModelos(modelos) {
+    const elLista = document.getElementById("lista_modelos");
+    const elResultados = document.getElementById("resultados_modelos");
+    
+    // 1. Render para a aba de CADASTRO/GESTÃO (com botões de ação completos)
+    if (elLista) {
+        if (modelos.length === 0) {
+            elLista.innerHTML = '<div class="empty-mini"><i class="fas fa-inbox"></i> Nenhum modelo cadastrado.</div>';
+        } else {
+            elLista.innerHTML = modelos.map(m => {
+                const vincs = (m.assuntos_vinculados || []).map(sid => {
+                    const ass = listaCache.find(a => a.id === sid);
+                    return ass ? sanitize(ass.titulo) : null;
+                }).filter(Boolean);
+                
+                const vincText = vincs.length > 0 
+                    ? '<div style="margin-top: 6px; font-size: 0.76rem; color: var(--green-700);"><i class="fas fa-link"></i> Vinculado a: ' + vincs.join(", ") + '</div>' 
+                    : '<div style="margin-top: 6px; font-size: 0.76rem; color: var(--ink-muted);"><i class="fas fa-link-slash"></i> Sem vínculos</div>';
+                
+                const temXX = /X{2,}/.test(m.corpo || "");
+
+                const corpoToggle = m.corpo 
+                    ? '<div class="card-modelo-corpo-toggle" style="margin-top: 8px;">' +
+                        '<button type="button" onclick="toggleCorpoCard(this)" style="background: none; border: none; color: var(--accent); font-size: 0.8rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 0; outline: none;">' +
+                            '<i class="fas fa-chevron-down"></i> Ver corpo do documento' +
+                        '</button>' +
+                        '<div class="modelo-corpo-completo" style="display: none; margin-top: 8px; background: var(--sand-200); padding: 12px; border-radius: var(--r-sm); font-size: 0.82rem; font-family: monospace; white-space: pre-wrap; color: var(--ink); border-left: 3px solid var(--accent); line-height: 1.5; max-height: 180px; overflow-y: auto;">' + sanitize(m.corpo) + '</div>' +
+                      '</div>'
+                    : '';
+
+                return '<div class="card-assunto" style="border-color: var(--border); margin-bottom: 12px; animation: fadeUp .2s ease both;">' +
+                    '<div class="card-top">' +
+                        '<div class="card-cat"><i class="fas fa-file-invoice"></i> Modelo de Ofício</div>' +
+                    '</div>' +
+                    '<h3 class="card-titulo" style="font-size: 1.05rem;">' + sanitize(m.titulo) + '</h3>' +
+                    (m.descricao ? '<p style="font-size: 0.85rem; color: var(--ink-muted); margin-bottom: 6px;">' + sanitize(m.descricao) + '</p>' : "") +
+                    vincText +
+                    corpoToggle +
+                    '<div class="card-acoes" style="margin-top: 12px; display: flex; gap: 8px;">' +
+                        '<button class="btn btn-primary btn-sm" onclick="abrirPreenchimentoModeloPorId(\'' + m.id + '\')"><i class="fas fa-file-pen"></i> ' + (temXX ? "Preencher e copiar" : "Copiar documento") + '</button>' +
+                        '<button class="btn btn-ghost btn-icon btn-sm" onclick="editarModelo(\'' + m.id + '\')" title="Editar"><i class="fas fa-pencil"></i></button>' +
+                        '<button class="btn btn-danger-ghost btn-icon btn-sm" onclick="removerModelo(\'' + m.id + '\', \'' + sanitize(m.titulo).replace(/'/g, "\\'") + '\')" title="Remover"><i class="fas fa-trash"></i></button>' +
+                    '</div>' +
+                '</div>';
+            }).join("");
+        }
+    }
+
+    // 2. Render para a aba de BUSCA DE OFÍCIO (Layout limpo, apenas cópia/preenchimento)
+    if (elResultados) {
+        if (modelos.length === 0) {
+            elResultados.innerHTML = '<div class="empty"><i class="fas fa-magnifying-glass"></i><p>Nenhum modelo encontrado.</p></div>';
+        } else {
+            elResultados.innerHTML = modelos.map(m => {
+                const vincs = (m.assuntos_vinculados || []).map(sid => {
+                    const ass = listaCache.find(a => a.id === sid);
+                    return ass ? sanitize(ass.titulo) : null;
+                }).filter(Boolean);
+                
+                const vincText = vincs.length > 0 
+                    ? '<div style="margin-top: 6px; font-size: 0.76rem; color: var(--green-700);"><i class="fas fa-link"></i> Vinculado a: ' + vincs.join(", ") + '</div>' 
+                    : '';
+                
+                const temXX = /X{2,}/.test(m.corpo || "");
+
+                const corpoToggle = m.corpo 
+                    ? '<div class="card-modelo-corpo-toggle" style="margin-top: 8px;">' +
+                        '<button type="button" onclick="toggleCorpoCard(this)" style="background: none; border: none; color: var(--accent); font-size: 0.8rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 0; outline: none;">' +
+                            '<i class="fas fa-chevron-down"></i> Ver corpo do documento' +
+                        '</button>' +
+                        '<div class="modelo-corpo-completo" style="display: none; margin-top: 8px; background: var(--sand-200); padding: 12px; border-radius: var(--r-sm); font-size: 0.82rem; font-family: monospace; white-space: pre-wrap; color: var(--ink); border-left: 3px solid var(--accent); line-height: 1.5; max-height: 180px; overflow-y: auto;">' + sanitize(m.corpo) + '</div>' +
+                      '</div>'
+                    : '';
+
+                return '<div class="card-assunto" style="border-color: var(--border); margin-bottom: 12px; animation: fadeUp .2s ease both;">' +
+                    '<div class="card-top">' +
+                        '<div class="card-cat"><i class="fas fa-file-invoice"></i> Modelo de Ofício</div>' +
+                    '</div>' +
+                    '<h3 class="card-titulo" style="font-size: 1.05rem;">' + sanitize(m.titulo) + '</h3>' +
+                    (m.descricao ? '<p style="font-size: 0.85rem; color: var(--ink-muted); margin-bottom: 6px;">' + sanitize(m.descricao) + '</p>' : "") +
+                    vincText +
+                    corpoToggle +
+                    '<div class="card-acoes" style="margin-top: 12px;">' +
+                        '<button class="btn btn-primary btn-sm" onclick="abrirPreenchimentoModeloPorId(\'' + m.id + '\')"><i class="fas fa-copy"></i> ' + (temXX ? "Preencher e copiar" : "Copiar documento") + '</button>' +
+                    '</div>' +
+                '</div>';
+            }).join("");
+        }
+    }
+}
+
+function editarModelo(id) {
+    const m = listaModelosCache.find(x => x.id === id);
+    if (!m) return;
+    document.getElementById("modelo-titulo").value = m.titulo || "";
+    document.getElementById("modelo-descricao").value = m.descricao || "";
+    document.getElementById("modelo-corpo").value = m.corpo || "";
+    
+    document.querySelectorAll('input[name="assunto-vinc"]').forEach(cb => {
+        cb.checked = (m.assuntos_vinculados || []).includes(cb.value);
+    });
+    
+    editandoModeloId = id;
+    document.getElementById("btn-label-modelo-txt").textContent = "Salvar Alterações";
+    const banner = document.getElementById("edit-mode-banner-modelo");
+    if (banner) banner.style.display = "flex";
+    
+    document.getElementById("card-form-modelo").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function removerModelo(id, titulo) {
+    if (!confirm('Remover o modelo "' + titulo + '"?\n\nEsta ação não pode ser desfeita.')) return;
+    try {
+        let removidoFirebase = false;
+        if (modelosRef && !id.toString().startsWith("loc_")) {
+            try {
+                await modelosRef.doc(id).delete();
+                toast("Modelo de ofício removido.");
+                removidoFirebase = true;
+            } catch (fbError) {
+                console.warn("Erro ao remover do Firebase, tentando LocalStorage:", fbError);
+            }
+        }
+        
+        if (!removidoFirebase) {
+            const local = lsGet(LS_MODELOS, []);
+            lsSet(LS_MODELOS, local.filter(m => m.id !== id));
+            toast("Modelo de ofício removido localmente.");
+        }
+        carregarModelos();
+    } catch (error) {
+        console.error("Erro ao remover modelo:", error);
+        toast("Erro ao remover modelo.", "error");
+    }
+}
+
+function buscarModelosDebounce() {
+    clearTimeout(debounceTimerModelos);
+    debounceTimerModelos = setTimeout(buscarModelos, 250);
+    const limpar = document.getElementById("limpar-busca-modelos");
+    if (limpar) limpar.style.display = document.getElementById("busca-modelos").value ? "flex" : "none";
+}
+
+function limparBuscaModelos() {
+    document.getElementById("busca-modelos").value = "";
+    document.getElementById("limpar-busca-modelos").style.display = "none";
+    document.getElementById("busca-modelos").focus();
+    renderListaModelos(listaModelosCache);
+}
+
+function buscarModelos() {
+    const termo = document.getElementById("busca-modelos").value.trim().toLowerCase();
+    if (!termo) { renderListaModelos(listaModelosCache); return; }
+    
+    const palavras = termo.split(/\s+/).filter(Boolean);
+    const resultados = listaModelosCache.filter(m => {
+        const tit = (m.titulo || "").toLowerCase();
+        const desc = (m.descricao || "").toLowerCase();
+        const corp = (m.corpo || "").toLowerCase();
+        
+        // Nomes dos assuntos vinculados a este modelo
+        const vincs = (m.assuntos_vinculados || []).map(sid => {
+            const ass = listaCache.find(a => a.id === sid);
+            return ass ? (ass.titulo || "").toLowerCase() : "";
+        }).filter(Boolean);
+
+        return palavras.every(p => 
+            tit.includes(p) || 
+            desc.includes(p) || 
+            corp.includes(p) ||
+            vincs.some(v => v.includes(p))
+        );
+    });
+    
+    renderListaModelos(resultados);
+}
+
+function filtrarListaModelos() {
+    const termo = (document.getElementById("filtro-lista-modelos-input") ? document.getElementById("filtro-lista-modelos-input").value : "").toLowerCase().trim();
+    if (!termo) { renderListaModelos(listaModelosCache); return; }
+    renderListaModelos(listaModelosCache.filter(m =>
+        (m.titulo || "").toLowerCase().includes(termo) ||
+        (m.descricao || "").toLowerCase().includes(termo)
+    ));
+}
+
+let modalModeloAtual = null;
+let modalModeloTrechos = [];
+
+function abrirPreenchimentoModeloPorId(id) {
+    const m = listaModelosCache.find(x => x.id === id);
+    if (!m) { toast("Modelo não encontrado.", "error"); return; }
+    abrirPreenchimentoModelo(m);
+}
+
+function abrirPreenchimentoModelo(m) {
+    modalModeloAtual = m;
+    const texto = m.corpo || "";
+    modalModeloTrechos = [];
+    const regex = /(X{2,})/g;
+    let ultimo = 0, match, idx = 0;
+    const campos = [];
+    
+    while ((match = regex.exec(texto)) !== null) {
+        modalModeloTrechos.push({ tipo: "texto", valor: texto.slice(ultimo, match.index) });
+        modalModeloTrechos.push({ tipo: "campo", id: idx, original: match[0] });
+        campos.push({ id: idx, original: match[0] });
+        ultimo = match.index + match[0].length;
+        idx++;
+    }
+    modalModeloTrechos.push({ tipo: "texto", valor: texto.slice(ultimo) });
+    
+    const contCampos = document.getElementById("modal-campos-modelo");
+    if (campos.length === 0) {
+        contCampos.innerHTML = '<div style="grid-column: span 2; text-align: center; color: var(--ink-muted); font-size: 0.9rem; padding: 12px 0;">Este modelo não possui variáveis XX para preencher.</div>';
+    } else {
+        contCampos.innerHTML = campos.map(c => 
+            '<div class="modal-campo" style="margin-bottom: 8px;">' +
+            '<label style="font-size: 0.72rem; font-weight:700; text-transform: uppercase;">Variável ' + (c.id + 1) + ' <span class="modal-campo-hint">(' + c.original + ')</span></label>' +
+            '<input type="text" data-campo-modelo="' + c.id + '" oninput="atualizarPreviewModelo()" placeholder="Preencha o valor..." style="padding: 8px 12px; font-size: 0.88rem; width: 100%;" autocomplete="off">' +
+            '</div>'
+        ).join("");
+    }
+    
+    document.getElementById("modal-titulo-modelo").textContent = m.titulo;
+    atualizarPreviewModelo();
+    document.getElementById("modal-preencher-modelo").style.display = "flex";
+    
+    setTimeout(() => {
+        const firstInput = contCampos.querySelector("input");
+        if (firstInput) firstInput.focus();
+    }, 100);
+}
+
+function atualizarPreviewModelo() {
+    const valores = {};
+    document.querySelectorAll("[data-campo-modelo]").forEach(inp => {
+        valores[inp.dataset.campoModelo] = inp.value;
+    });
+    
+    let html = "", textoFinal = "";
+    modalModeloTrechos.forEach(t => {
+        if (t.tipo === "texto") {
+            html += sanitize(t.valor);
+            textoFinal += t.valor;
+        } else {
+            const v = valores[t.id];
+            if (v) {
+                html += '<mark>' + sanitize(v) + '</mark>';
+                textoFinal += v;
+            } else {
+                html += '<span class="ph">' + sanitize(t.original) + '</span>';
+                textoFinal += t.original;
+            }
+        }
+    });
+    
+    document.getElementById("modal-preview-modelo").innerHTML = html;
+    document.getElementById("modal-preencher-modelo").dataset.textoFinal = textoFinal;
+}
+
+function confirmarPreenchimentoModelo() {
+    const texto = document.getElementById("modal-preencher-modelo").dataset.textoFinal;
+    copiarTextoModelo(texto, modalModeloAtual);
+    fecharModalModelo();
+}
+
+function copiarModeloSemPreencher() {
+    copiarTextoModelo(modalModeloAtual.corpo, modalModeloAtual);
+    fecharModalModelo();
+}
+
+function fecharModalModelo() {
+    document.getElementById("modal-preencher-modelo").style.display = "none";
+    modalModeloAtual = null;
+}
+
+function copiarTextoModelo(texto, modelo) {
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(texto).then(() => {
+            toast("Modelo de ofício copiado!");
+            registrarUsoModelo(modelo, texto);
+        }).catch(() => fallbackCopiarModelo(texto, modelo));
+    } else {
+        fallbackCopiarModelo(texto, modelo);
+    }
+}
+
+function fallbackCopiarModelo(texto, modelo) {
+    const ta = document.createElement("textarea");
+    ta.value = texto; document.body.appendChild(ta); ta.select();
+    try {
+        document.execCommand("copy");
+        toast("Modelo de ofício copiado!");
+        registrarUsoModelo(modelo, texto);
+    } catch {
+        toast("Não foi possível copiar.", "error");
+    }
+    document.body.removeChild(ta);
+}
+
+function registrarUsoModelo(modelo, textoFinal) {
+    historico.unshift({ texto: textoFinal, titulo: "[Modelo] " + modelo.titulo, data: Date.now() });
+    historico = historico.slice(0, 20);
+    lsSet(LS_HIST, historico);
+    atualizarBadgeHistorico();
+}
+
+function toggleCorpoCard(btn) {
+    const container = btn.nextElementSibling;
+    const icon = btn.querySelector("i");
+    if (container.style.display === "none") {
+        container.style.display = "block";
+        icon.className = "fas fa-chevron-up";
+        btn.innerHTML = '<i class="fas fa-chevron-up"></i> Ocultar corpo do documento';
+    } else {
+        container.style.display = "none";
+        icon.className = "fas fa-chevron-down";
+        btn.innerHTML = '<i class="fas fa-chevron-down"></i> Ver corpo do documento';
+    }
+}
+
 // INICIALIZACAO
 window.addEventListener("load", () => {
     console.log("Sistema carregado. cadastrarAssuntoTeste() para inserir exemplos.");
@@ -642,11 +1207,17 @@ window.addEventListener("load", () => {
             e.preventDefault();
             irPara("buscar");
         }
-        if (e.key === "Escape") { fecharModal(); fecharHistorico(); }
+        if (e.key === "Escape") { fecharModal(); fecharModalModelo(); fecharHistorico(); }
     });
+    carregarAssuntos();
+    carregarModelos();
+
     if (auth) {
-        auth.onAuthStateChanged((user) => { if (user) carregarAssuntos(); });
-    } else {
-        carregarAssuntos();
+        auth.onAuthStateChanged((user) => { 
+            if (user) { 
+                carregarAssuntos(); 
+                carregarModelos();
+            } 
+        });
     }
 });
