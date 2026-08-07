@@ -1411,6 +1411,7 @@ function abrirModalAdmin() {
         if (painelLogado) painelLogado.style.display = "none";
     }
     
+    modal.classList.add("aberto");
     modal.style.display = "flex";
     setTimeout(() => {
         const inp = document.getElementById("senha-admin");
@@ -1420,7 +1421,10 @@ function abrirModalAdmin() {
 
 function fecharModalAdmin() {
     const modal = document.getElementById("modal-admin");
-    if (modal) modal.style.display = "none";
+    if (modal) {
+        modal.classList.remove("aberto");
+        modal.style.display = "none";
+    }
 }
 
 function validarLoginAdmin(e) {

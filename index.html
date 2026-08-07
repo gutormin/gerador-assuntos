@@ -175,6 +175,21 @@ body:not(.modo-admin) .admin-only {
     display: none !important;
 }
 
+#modal-admin {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 600;
+    background: rgba(10,20,15,.6);
+    backdrop-filter: blur(4px);
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+#modal-admin.aberto {
+    display: flex !important;
+}
+
 /* ════════════════════════════════════════════════════════════
    NAVEGAÇÃO PRINCIPAL
 ════════════════════════════════════════════════════════════ */
@@ -1196,7 +1211,7 @@ textarea {
 <!-- ══════════════════════════════════════════════════════════
      MODAL: ACESSO ADMINISTRATIVO (LOGIN & ALTERAR SENHA)
 ══════════════════════════════════════════════════════════ -->
-<div id="modal-admin" style="display:none; position:fixed; inset:0; z-index:600; background:rgba(10,20,15,.6); backdrop-filter:blur(4px); align-items:center; justify-content:center; padding:20px;">
+<div id="modal-admin">
     <div class="modal-box" style="max-width: 440px; width: 100%;">
         <div class="modal-header">
             <div>
