@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gerador de Assuntos para Ofício</title>
+    <title>Gerador de Assuntos e Ofícios</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='18' fill='%232d5a3d'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='white' font-family='Georgia'>A</text></svg>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -147,6 +147,32 @@ header .sub { font-size:.78rem; opacity:.55; margin-top:1px; }
     min-width:18px;
     text-align:center;
     display:none;
+}
+
+.btn-admin-header {
+    position:relative;
+    background:rgba(255,255,255,.12);
+    border:1px solid rgba(255,255,255,.2);
+    border-radius:10px;
+    padding:8px 14px;
+    color:#fff;
+    cursor:pointer;
+    font-size:.84rem;
+    font-family:'DM Sans',sans-serif;
+    font-weight:600;
+    display:flex; align-items:center; gap:7px;
+    transition:all .2s;
+}
+.btn-admin-header:hover { background:rgba(255,255,255,.22); }
+.btn-admin-header.admin-ativo {
+    background:var(--terra);
+    border-color:rgba(255,255,255,.4);
+    box-shadow:0 0 10px rgba(139,69,19,.4);
+}
+
+/* Ocultar elementos de admin quando NÃO estiver no modo admin */
+body:not(.modo-admin) .admin-only {
+    display: none !important;
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -786,6 +812,9 @@ textarea {
             <i class="fas fa-clock-rotate-left"></i> Histórico
             <span id="badge-hist">0</span>
         </button>
+        <button class="btn-admin-header" id="btn-admin-status" onclick="clicarAdmin()" title="Acesso do Administrador">
+            <i class="fas fa-lock" id="icone-admin-status"></i> <span id="txt-admin-status">Admin</span>
+        </button>
     </div>
 </header>
 
@@ -799,10 +828,10 @@ textarea {
     <button class="nav-btn" data-tela="buscar-oficio" onclick="irPara('buscar-oficio')">
         <i class="nav-icon fas fa-file-invoice"></i> Busca de Ofício
     </button>
-    <button class="nav-btn" data-tela="cadastro-oficio" onclick="irPara('cadastro-oficio')">
+    <button class="nav-btn admin-only" data-tela="cadastro-oficio" onclick="irPara('cadastro-oficio')">
         <i class="nav-icon fas fa-file-signature"></i> Cadastro de Ofício
     </button>
-    <button class="nav-btn" data-tela="gerenciar" onclick="irPara('gerenciar')">
+    <button class="nav-btn admin-only" data-tela="gerenciar" onclick="irPara('gerenciar')">
         <i class="nav-icon fas fa-sliders"></i> Gerenciar
     </button>
 </nav>
@@ -1163,6 +1192,84 @@ textarea {
 <div class="overlay-hist" onclick="fecharHistorico()"></div>
 
 <div id="toast"></div>
+
+<!-- ══════════════════════════════════════════════════════════
+     MODAL: ACESSO ADMINISTRATIVO (LOGIN & ALTERAR SENHA)
+══════════════════════════════════════════════════════════ -->
+<div id="modal-admin" style="display:none; position:fixed; inset:0; z-index:600; background:rgba(10,20,15,.6); backdrop-filter:blur(4px); align-items:center; justify-content:center; padding:20px;">
+    <div class="modal-box" style="max-width: 440px; width: 100%;">
+        <div class="modal-header">
+            <div>
+                <h3><i class="fas fa-user-shield"></i> Área do Administrador</h3>
+                <p style="color: rgba(255,255,255,0.7); font-size: 0.8rem; margin-top: 2px;">Gestão e cadastros do sistema</p>
+            </div>
+            <button class="modal-close" onclick="fecharModalAdmin()"><i class="fas fa-xmark"></i></button>
+        </div>
+        <div class="modal-body">
+            <!-- Painel de Login -->
+            <div id="admin-painel-login">
+                <p style="font-size: 0.88rem; color: var(--ink-muted); margin-bottom: 16px; line-height: 1.5;">
+                    Digite a senha de administrador para liberar os módulos de <strong>Cadastro de Ofício</strong> e <strong>Gerenciar Assuntos</strong>.
+                </p>
+                <form id="form-login-admin" onsubmit="validarLoginAdmin(event)">
+                    <div class="modal-campo">
+                        <label for="senha-admin">Senha de Admin</label>
+                        <div style="position: relative;">
+                            <input type="password" id="senha-admin" placeholder="Digite a senha (padrão: admin123)..." autocomplete="current-password" style="padding-right: 40px;">
+                            <button type="button" onclick="toggleMostrarSenha('senha-admin', 'icone-ver-senha-1')" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--ink-muted); cursor: pointer; padding: 4px;">
+                                <i class="fas fa-eye" id="icone-ver-senha-1"></i>
+                            </button>
+                        </div>
+                        <div id="erro-senha-admin" style="display: none; color: var(--danger); font-size: 0.8rem; margin-top: 6px; font-weight: 600;">
+                            <i class="fas fa-circle-exclamation"></i> Senha incorreta. Tente novamente.
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px;">
+                        <button type="button" class="btn btn-ghost" onclick="fecharModalAdmin()">Cancelar</button>
+                        <button type="submit" class="btn btn-primary"><i class="fas fa-key"></i> Entrar como Admin</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Painel quando já está logado como Admin -->
+            <div id="admin-painel-logado" style="display: none;">
+                <div style="background: var(--green-100); color: var(--green-900); padding: 14px; border-radius: var(--r-sm); margin-bottom: 18px; font-size: 0.88rem; display: flex; align-items: center; gap: 10px;">
+                    <i class="fas fa-circle-check" style="font-size: 1.2rem; color: var(--green-700);"></i>
+                    <div>
+                        <strong>Você está logado como Admin</strong>
+                        <div style="font-size: 0.78rem; opacity: 0.85;">Todos os módulos de edição e cadastro estão visíveis.</div>
+                    </div>
+                </div>
+
+                <!-- Formulário para Alterar Senha -->
+                <details style="border: 1px solid var(--border); border-radius: var(--r-sm); padding: 12px; margin-bottom: 16px;">
+                    <summary style="font-size: 0.85rem; font-weight: 700; color: var(--accent); cursor: pointer;"><i class="fas fa-key"></i> Alterar senha de administrador</summary>
+                    <form onsubmit="alterarSenhaAdmin(event)" style="margin-top: 12px;">
+                        <div class="modal-campo" style="margin-bottom: 10px;">
+                            <label for="senha-atual" style="font-size: 0.72rem;">Senha Atual</label>
+                            <input type="password" id="senha-atual" placeholder="Senha atual..." style="padding: 8px 12px; font-size: 0.88rem;">
+                        </div>
+                        <div class="modal-campo" style="margin-bottom: 10px;">
+                            <label for="nova-senha" style="font-size: 0.72rem;">Nova Senha</label>
+                            <input type="password" id="nova-senha" placeholder="Nova senha..." style="padding: 8px 12px; font-size: 0.88rem;">
+                        </div>
+                        <div class="modal-campo" style="margin-bottom: 10px;">
+                            <label for="confirma-senha" style="font-size: 0.72rem;">Confirmar Nova Senha</label>
+                            <input type="password" id="confirma-senha" placeholder="Repita a nova senha..." style="padding: 8px 12px; font-size: 0.88rem;">
+                        </div>
+                        <div id="erro-alterar-senha" style="display: none; color: var(--danger); font-size: 0.78rem; margin-bottom: 8px; font-weight: 600;"></div>
+                        <button type="submit" class="btn btn-outline btn-sm" style="width: 100%; justify-content: center;"><i class="fas fa-save"></i> Salvar Nova Senha</button>
+                    </form>
+                </details>
+
+                <div style="display: flex; gap: 10px; justify-content: space-between; margin-top: 16px;">
+                    <button type="button" class="btn btn-ghost" onclick="fecharModalAdmin()">Fechar</button>
+                    <button type="button" class="btn btn-danger-ghost" onclick="logoutAdmin(); fecharModalAdmin();"><i class="fas fa-right-from-bracket"></i> Sair do Modo Admin</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-app-compat.js"></script>

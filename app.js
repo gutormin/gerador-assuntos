@@ -35,6 +35,51 @@ function mostrarErroConfig() {
     if (el) el.classList.add("show");
 }
 
+// ═══════════════════════════════════════════════════════════════
+//  DETECÇÃO E PROCESSAMENTO DE VARIÁVEIS (XX, Xº, 202X, etc.)
+// ═══════════════════════════════════════════════════════════════
+const REGEX_VARIAVEIS_STR = "(?<![A-WY-Za-wy-z0-9])\\d*X+(?:[ºª°]|(?<=\\bX)[oa]\\b)?(?![A-Za-z0-9])";
+
+function temVariaveis(texto) {
+    if (!texto) return false;
+    const regex = new RegExp(REGEX_VARIAVEIS_STR, "g");
+    return regex.test(texto);
+}
+
+function obterRegexVariaveis() {
+    return new RegExp(REGEX_VARIAVEIS_STR, "g");
+}
+
+function processarValorCampo(val, original) {
+    if (!val) return "";
+    val = val.trim();
+    if (!val) return "";
+    
+    // Se o original for do tipo ano "202X", "20X", etc.
+    const mAno = /^(\d+)(X+)$/.exec(original);
+    if (mAno) {
+        const prefixo = mAno[1];
+        const qtdX = mAno[2].length;
+        if (val.length <= qtdX && /^\d+$/.test(val)) {
+            return prefixo + val;
+        }
+        if (val.startsWith(prefixo)) {
+            return val;
+        }
+    }
+
+    // Se o original for ordinal tipo "Xº", "Xª", "X°", "Xo", "Xa"
+    const mOrdinal = /^X([ºª°oa])$/.exec(original);
+    if (mOrdinal) {
+        const suf = mOrdinal[1];
+        if (/^\d+$/.test(val)) {
+            return val + (suf === 'o' ? 'º' : suf === 'a' ? 'ª' : suf);
+        }
+    }
+
+    return val;
+}
+
 // Estado global
 let editandoId      = null;
 let tagsAtivas      = [];
@@ -69,6 +114,11 @@ let usos      = lsGet(LS_USOS, {});
 
 // NAVEGACAO
 function irPara(tela) {
+    if ((tela === "gerenciar" || tela === "cadastro-oficio") && !ehAdmin()) {
+        toast("Acesso exclusivo para administradores.", "error");
+        abrirModalAdmin();
+        return;
+    }
     document.querySelectorAll(".tela").forEach(t => t.classList.remove("ativa"));
     document.getElementById("tela-" + tela).classList.add("ativa");
     document.querySelectorAll(".nav-btn").forEach(b => b.classList.toggle("ativo", b.dataset.tela === tela));
@@ -335,7 +385,7 @@ function renderInicio() {
     renderFiltrosCategoria();
 
     if (listaCache.length === 0) {
-        el.innerHTML = '<div class="empty"><i class="fas fa-folder-open"></i><p>Nenhum assunto cadastrado ainda.</p><button class="btn btn-ghost" onclick="irPara(\'gerenciar\')"><i class="fas fa-plus"></i> Cadastrar o primeiro</button></div>';
+        el.innerHTML = '<div class="empty"><i class="fas fa-folder-open"></i><p>Nenhum assunto cadastrado ainda.</p><button class="btn btn-ghost admin-only" onclick="irPara(\'gerenciar\')"><i class="fas fa-plus"></i> Cadastrar o primeiro</button></div>';
         return;
     }
     if (categoriaFiltro) { buscarAssuntos(); return; }
@@ -379,7 +429,7 @@ function renderResultados(resultados, palavras, termo, modelosResultados) {
     modelosResultados = modelosResultados || [];
     
     if (resultados.length === 0 && modelosResultados.length === 0) {
-        el.innerHTML = '<div class="empty"><i class="fas fa-magnifying-glass"></i><p>Nada encontrado' + (termo ? ' para "<strong>' + sanitize(termo) + '</strong>"' : "") + '.</p><button class="btn btn-ghost" onclick="irParaCadastro(\'' + sanitize(termo).replace(/'/g, "\\'") + '\')"><i class="fas fa-plus"></i> Cadastrar novo assunto</button></div>';
+        el.innerHTML = '<div class="empty"><i class="fas fa-magnifying-glass"></i><p>Nada encontrado' + (termo ? ' para "<strong>' + sanitize(termo) + '</strong>"' : "") + '.</p><button class="btn btn-ghost admin-only" onclick="irParaCadastro(\'' + sanitize(termo).replace(/'/g, "\\'") + '\')"><i class="fas fa-plus"></i> Cadastrar novo assunto</button></div>';
         return;
     }
     
@@ -394,7 +444,7 @@ function renderResultados(resultados, palavras, termo, modelosResultados) {
     if (modelosResultados.length > 0) {
         html += '<div class="secao-titulo" style="margin-top: 24px;"><i class="fas fa-file-invoice"></i> Modelos de Ofício Encontrados</div>';
         html += modelosResultados.map(m => {
-            const temXX = /X{2,}/.test(m.corpo || "");
+            const temXX = temVariaveis(m.corpo);
             const vincs = (m.assuntos_vinculados || []).map(sid => {
                 const ass = listaCache.find(a => a.id === sid);
                 return ass ? sanitize(ass.titulo) : null;
@@ -448,7 +498,7 @@ function cardAssunto(a, palavras) {
         return '<span class="tag ' + (match ? 'match' : '') + '">' + sanitize(t) + '</span>';
     }).join("");
     const ehFav = favoritos.includes(a.id);
-    const temXX = /X{2,}/.test(a.descricao || "");
+    const temXX = temVariaveis(a.descricao);
     const preview = sanitize(a.descricao || "");
 
     // Modelos vinculados sugeridos
@@ -478,7 +528,7 @@ function cardAssunto(a, palavras) {
         htmlModelos +
         '<div class="card-acoes" style="margin-top: 14px;">' +
             '<button class="btn btn-primary btn-copiar" data-copiar="' + a.id + '"><i class="fas fa-copy"></i> ' + (temXX ? "Preencher e copiar" : "Copiar assunto") + '</button>' +
-            '<button class="btn btn-ghost btn-icon" data-editar="' + a.id + '" title="Editar"><i class="fas fa-pencil"></i></button>' +
+            '<button class="btn btn-ghost btn-icon admin-only" data-editar="' + a.id + '" title="Editar"><i class="fas fa-pencil"></i></button>' +
         '</div>' +
     '</div>';
 }
@@ -513,7 +563,7 @@ function toggleFavorito(id) {
 function acaoCopiar(id) {
     const a = listaCache.find(x => x.id === id);
     if (!a || !a.descricao) { toast("Sem texto para copiar.", "error"); return; }
-    if (/X{2,}/.test(a.descricao)) abrirPreenchimento(a);
+    if (temVariaveis(a.descricao)) abrirPreenchimento(a);
     else copiarTexto(a.descricao, a);
 }
 
@@ -552,7 +602,7 @@ function abrirPreenchimento(a) {
     modalAssuntoAtual = a;
     const texto = a.descricao;
     modalTrechos = [];
-    const regex = /(X{2,})/g;
+    const regex = obterRegexVariaveis();
     let ultimo = 0, m, idx = 0;
     const campos = [];
     while ((m = regex.exec(texto)) !== null) {
@@ -566,7 +616,7 @@ function abrirPreenchimento(a) {
 
     const corpo = document.getElementById("modal-campos");
     corpo.innerHTML = campos.map(c =>
-        '<div class="modal-campo"><label>Campo ' + (c.id + 1) + ' <span class="modal-campo-hint">(' + c.original + ')</span></label>' +
+        '<div class="modal-campo"><label>Campo ' + (c.id + 1) + ' <span class="modal-campo-hint">(' + sanitize(c.original) + ')</span></label>' +
         '<input type="text" data-campo="' + c.id + '" oninput="atualizarPreview()" placeholder="Digite o valor..." autocomplete="off"></div>'
     ).join("");
 
@@ -583,7 +633,8 @@ function atualizarPreview() {
     modalTrechos.forEach(t => {
         if (t.tipo === "texto") { html += sanitize(t.valor); textoFinal += t.valor; }
         else {
-            const v = valores[t.id];
+            const rawVal = valores[t.id];
+            const v = processarValorCampo(rawVal, t.original);
             if (v) { html += '<mark>' + sanitize(v) + '</mark>'; textoFinal += v; }
             else { html += '<span class="ph">' + sanitize(t.original) + '</span>'; textoFinal += t.original; }
         }
@@ -710,16 +761,52 @@ function processarSnapshot(snapshot) {
         if (termo || categoriaFiltro) buscarAssuntos(); else renderInicio();
     }
 }
+const DADOS_INICIAIS_PADRAO = [];
+
+function garantirDadosIniciais() {
+    return lsGet("ga_assuntos", []);
+}
+
 async function carregarAssuntos() {
+    let assuntosEncontrados = [];
     try {
-        let snap;
-        try { snap = await assuntosRef.orderBy("data_cadastro", "desc").limit(LIMITE).get(); }
-        catch { snap = await assuntosRef.limit(LIMITE).get(); }
-        processarSnapshot(snap);
+        if (assuntosRef) {
+            let snap;
+            try { snap = await assuntosRef.orderBy("data_cadastro", "desc").limit(LIMITE).get(); }
+            catch { snap = await assuntosRef.limit(LIMITE).get(); }
+            if (snap && !snap.empty) {
+                snap.forEach(doc => assuntosEncontrados.push(Object.assign({ id: doc.id }, doc.data())));
+            }
+        }
+        if (assuntosEncontrados.length === 0 && db) {
+            try {
+                const altSnap = await db.collection("gerador_assuntos").limit(LIMITE).get();
+                if (altSnap && !altSnap.empty) {
+                    altSnap.forEach(doc => assuntosEncontrados.push(Object.assign({ id: doc.id }, doc.data())));
+                }
+            } catch (eAlt) {}
+        }
     } catch (error) {
-        console.error("Erro ao carregar:", error);
-        const el = document.getElementById("lista_assuntos");
-        if (el) el.innerHTML = '<div class="empty-mini" style="color:var(--danger)"><i class="fas fa-circle-exclamation"></i> Erro ao carregar. Verifique o Firebase.</div>';
+        console.warn("Erro ao buscar no Firebase, carregando dados locais:", error);
+    }
+
+    const localAssuntos = garantirDadosIniciais();
+    const mapa = new Map();
+    assuntosEncontrados.forEach(a => mapa.set(a.id, a));
+    localAssuntos.forEach(a => { if (!mapa.has(a.id)) mapa.set(a.id, a); });
+    
+    listaCache = Array.from(mapa.values());
+    categoriasCache.clear();
+    listaCache.forEach(a => { if (a.categoria) categoriasCache.add(a.categoria); });
+    atualizarContador(listaCache.length);
+    atualizarDatalist();
+    
+    if (document.getElementById("tela-gerenciar") && document.getElementById("tela-gerenciar").classList.contains("ativa")) {
+        filtrarLista();
+    }
+    if (document.getElementById("tela-buscar") && document.getElementById("tela-buscar").classList.contains("ativa")) {
+        const termo = document.getElementById("busca") ? document.getElementById("busca").value.trim() : "";
+        if (termo || categoriaFiltro) buscarAssuntos(); else renderInicio();
     }
 }
 function irParaCadastro(termoBusca) {
@@ -843,7 +930,29 @@ function cancelarEdicaoModelo() {
     limparFormularioModelo();
 }
 
+const MODELOS_PADRAO_OFICIO = [];
+
+function garantirModelosIniciais() {
+    return lsGet(LS_MODELOS, []);
+}
+
+function limparDadosExemploLocais() {
+    ["padrao_1", "padrao_2", "padrao_3", "padrao_4", "padrao_5", "padrao_6"].forEach(id => {
+        let ass = lsGet("ga_assuntos", []);
+        if (Array.isArray(ass)) {
+            lsSet("ga_assuntos", ass.filter(x => x && !x.id?.startsWith("padrao_")));
+        }
+    });
+    ["mod_oficio_1", "mod_oficio_2", "mod_oficio_3", "mod_oficio_4"].forEach(id => {
+        let mods = lsGet(LS_MODELOS, []);
+        if (Array.isArray(mods)) {
+            lsSet(LS_MODELOS, mods.filter(x => x && !x.id?.startsWith("mod_oficio_")));
+        }
+    });
+}
+
 async function carregarModelos() {
+    let modelosEncontrados = [];
     try {
         if (modelosRef) {
             let snap;
@@ -854,21 +963,36 @@ async function carregarModelos() {
                 snap = await modelosRef.limit(LIMITE).get();
             }
             
-            listaModelosCache = [];
-            snap.forEach(doc => {
-                listaModelosCache.push(Object.assign({ id: doc.id }, doc.data()));
-            });
-        } else {
-            listaModelosCache = lsGet(LS_MODELOS, []);
+            if (snap && !snap.empty) {
+                snap.forEach(doc => modelosEncontrados.push(Object.assign({ id: doc.id }, doc.data())));
+            }
         }
-        atualizarContadorModelos(listaModelosCache.length);
-        renderListaModelos(listaModelosCache);
+        
+        // Se a coleção 'modelos_oficio' estiver vazia ou offline, tenta coleções alternativas ('modelos', 'oficios')
+        if (modelosEncontrados.length === 0 && db) {
+            const colecoesAlt = ["modelos", "oficios"];
+            for (const col of colecoesAlt) {
+                try {
+                    const snapAlt = await db.collection(col).limit(LIMITE).get();
+                    if (snapAlt && !snapAlt.empty) {
+                        snapAlt.forEach(doc => modelosEncontrados.push(Object.assign({ id: doc.id }, doc.data())));
+                        break;
+                    }
+                } catch (eAlt) {}
+            }
+        }
     } catch (error) {
-        console.warn("Erro ao carregar modelos do Firebase. Usando LocalStorage:", error);
-        listaModelosCache = lsGet(LS_MODELOS, []);
-        atualizarContadorModelos(listaModelosCache.length);
-        renderListaModelos(listaModelosCache);
+        console.warn("Erro ao carregar modelos do Firebase:", error);
     }
+
+    const localModelos = garantirModelosIniciais();
+    const mapa = new Map();
+    modelosEncontrados.forEach(m => mapa.set(m.id, m));
+    localModelos.forEach(m => { if (!mapa.has(m.id)) mapa.set(m.id, m); });
+
+    listaModelosCache = Array.from(mapa.values());
+    atualizarContadorModelos(listaModelosCache.length);
+    renderListaModelos(listaModelosCache);
 }
 
 function atualizarContadorModelos(n) {
@@ -916,8 +1040,8 @@ function renderListaModelos(modelos) {
                     corpoToggle +
                     '<div class="card-acoes" style="margin-top: 12px; display: flex; gap: 8px;">' +
                         '<button class="btn btn-primary btn-sm" onclick="abrirPreenchimentoModeloPorId(\'' + m.id + '\')"><i class="fas fa-file-pen"></i> ' + (temXX ? "Preencher e copiar" : "Copiar documento") + '</button>' +
-                        '<button class="btn btn-ghost btn-icon btn-sm" onclick="editarModelo(\'' + m.id + '\')" title="Editar"><i class="fas fa-pencil"></i></button>' +
-                        '<button class="btn btn-danger-ghost btn-icon btn-sm" onclick="removerModelo(\'' + m.id + '\', \'' + sanitize(m.titulo).replace(/'/g, "\\'") + '\')" title="Remover"><i class="fas fa-trash"></i></button>' +
+                        '<button class="btn btn-ghost btn-icon btn-sm admin-only" onclick="editarModelo(\'' + m.id + '\')" title="Editar"><i class="fas fa-pencil"></i></button>' +
+                        '<button class="btn btn-danger-ghost btn-icon btn-sm admin-only" onclick="removerModelo(\'' + m.id + '\', \'' + sanitize(m.titulo).replace(/'/g, "\\'") + '\')" title="Remover"><i class="fas fa-trash"></i></button>' +
                     '</div>' +
                 '</div>';
             }).join("");
@@ -927,7 +1051,12 @@ function renderListaModelos(modelos) {
     // 2. Render para a aba de BUSCA DE OFÍCIO (Layout limpo, apenas cópia/preenchimento)
     if (elResultados) {
         if (modelos.length === 0) {
-            elResultados.innerHTML = '<div class="empty"><i class="fas fa-magnifying-glass"></i><p>Nenhum modelo encontrado.</p></div>';
+            const termoBusca = (document.getElementById("busca-modelos") ? document.getElementById("busca-modelos").value : "").trim();
+            if (termoBusca) {
+                elResultados.innerHTML = '<div class="empty"><i class="fas fa-magnifying-glass"></i><p>Nenhum modelo encontrado para "<strong>' + sanitize(termoBusca) + '</strong>".</p><button type="button" class="btn btn-ghost btn-sm" onclick="limparBuscaModelos()" style="margin-top: 10px;"><i class="fas fa-xmark"></i> Limpar busca</button></div>';
+            } else {
+                elResultados.innerHTML = '<div class="empty"><i class="fas fa-magnifying-glass"></i><p>Nenhum modelo cadastrado no sistema ainda.</p><button type="button" class="btn btn-ghost btn-sm admin-only" onclick="irPara(\'cadastro-oficio\')" style="margin-top: 10px;"><i class="fas fa-plus"></i> Cadastrar primeiro modelo</button></div>';
+            }
         } else {
             elResultados.innerHTML = modelos.map(m => {
                 const vincs = (m.assuntos_vinculados || []).map(sid => {
@@ -939,7 +1068,7 @@ function renderListaModelos(modelos) {
                     ? '<div style="margin-top: 6px; font-size: 0.76rem; color: var(--green-700);"><i class="fas fa-link"></i> Vinculado a: ' + vincs.join(", ") + '</div>' 
                     : '';
                 
-                const temXX = /X{2,}/.test(m.corpo || "");
+                const temXX = temVariaveis(m.corpo);
 
                 const corpoToggle = m.corpo 
                     ? '<div class="card-modelo-corpo-toggle" style="margin-top: 8px;">' +
@@ -1075,7 +1204,7 @@ function abrirPreenchimentoModelo(m) {
     modalModeloAtual = m;
     const texto = m.corpo || "";
     modalModeloTrechos = [];
-    const regex = /(X{2,})/g;
+    const regex = obterRegexVariaveis();
     let ultimo = 0, match, idx = 0;
     const campos = [];
     
@@ -1090,11 +1219,11 @@ function abrirPreenchimentoModelo(m) {
     
     const contCampos = document.getElementById("modal-campos-modelo");
     if (campos.length === 0) {
-        contCampos.innerHTML = '<div style="grid-column: span 2; text-align: center; color: var(--ink-muted); font-size: 0.9rem; padding: 12px 0;">Este modelo não possui variáveis XX para preencher.</div>';
+        contCampos.innerHTML = '<div style="grid-column: span 2; text-align: center; color: var(--ink-muted); font-size: 0.9rem; padding: 12px 0;">Este modelo não possui variáveis para preencher.</div>';
     } else {
         contCampos.innerHTML = campos.map(c => 
             '<div class="modal-campo" style="margin-bottom: 8px;">' +
-            '<label style="font-size: 0.72rem; font-weight:700; text-transform: uppercase;">Variável ' + (c.id + 1) + ' <span class="modal-campo-hint">(' + c.original + ')</span></label>' +
+            '<label style="font-size: 0.72rem; font-weight:700; text-transform: uppercase;">Variável ' + (c.id + 1) + ' <span class="modal-campo-hint">(' + sanitize(c.original) + ')</span></label>' +
             '<input type="text" data-campo-modelo="' + c.id + '" oninput="atualizarPreviewModelo()" placeholder="Preencha o valor..." style="padding: 8px 12px; font-size: 0.88rem; width: 100%;" autocomplete="off">' +
             '</div>'
         ).join("");
@@ -1122,7 +1251,8 @@ function atualizarPreviewModelo() {
             html += sanitize(t.valor);
             textoFinal += t.valor;
         } else {
-            const v = valores[t.id];
+            const rawVal = valores[t.id];
+            const v = processarValorCampo(rawVal, t.original);
             if (v) {
                 html += '<mark>' + sanitize(v) + '</mark>';
                 textoFinal += v;
@@ -1200,14 +1330,15 @@ function toggleCorpoCard(btn) {
 
 // INICIALIZACAO
 window.addEventListener("load", () => {
-    console.log("Sistema carregado. cadastrarAssuntoTeste() para inserir exemplos.");
+    limparDadosExemploLocais();
     atualizarBadgeHistorico();
+    atualizarUIAdmin();
     document.addEventListener("keydown", (e) => {
         if (e.key === "/" && !["INPUT","TEXTAREA"].includes(document.activeElement.tagName)) {
             e.preventDefault();
             irPara("buscar");
         }
-        if (e.key === "Escape") { fecharModal(); fecharModalModelo(); fecharHistorico(); }
+        if (e.key === "Escape") { fecharModal(); fecharModalModelo(); fecharHistorico(); fecharModalAdmin(); }
     });
     carregarAssuntos();
     carregarModelos();
@@ -1221,3 +1352,211 @@ window.addEventListener("load", () => {
         });
     }
 });
+
+// ═══════════════════════════════════════════════════════════════
+//  MÓDULO: ADMINISTRADOR (ADMIN)
+// ═══════════════════════════════════════════════════════════════
+const LS_ADMIN_PASS = "ga_admin_pass";
+const SS_IS_ADMIN    = "ga_is_admin";
+
+function ehAdmin() {
+    return sessionStorage.getItem(SS_IS_ADMIN) === "true";
+}
+
+function obterSenhaAdmin() {
+    return localStorage.getItem(LS_ADMIN_PASS) || "admin123";
+}
+
+function atualizarUIAdmin() {
+    const isAdm = ehAdmin();
+    document.body.classList.toggle("modo-admin", isAdm);
+    
+    const btnStatus = document.getElementById("btn-admin-status");
+    const txtStatus = document.getElementById("txt-admin-status");
+    const icone = document.getElementById("icone-admin-status");
+    
+    if (btnStatus && txtStatus) {
+        if (isAdm) {
+            btnStatus.classList.add("admin-ativo");
+            txtStatus.textContent = "Admin (Sair)";
+            if (icone) icone.className = "fas fa-user-shield";
+            btnStatus.title = "Clique para sair do modo Administrador";
+        } else {
+            btnStatus.classList.remove("admin-ativo");
+            txtStatus.textContent = "Admin";
+            if (icone) icone.className = "fas fa-lock";
+            btnStatus.title = "Clique para entrar no modo Administrador";
+        }
+    }
+}
+
+function clicarAdmin() {
+    abrirModalAdmin();
+}
+
+function abrirModalAdmin() {
+    const modal = document.getElementById("modal-admin");
+    if (!modal) return;
+    document.getElementById("senha-admin").value = "";
+    const err = document.getElementById("erro-senha-admin");
+    if (err) err.style.display = "none";
+    
+    const painelLogin = document.getElementById("admin-painel-login");
+    const painelLogado = document.getElementById("admin-painel-logado");
+    if (ehAdmin()) {
+        if (painelLogin) painelLogin.style.display = "none";
+        if (painelLogado) painelLogado.style.display = "block";
+    } else {
+        if (painelLogin) painelLogin.style.display = "block";
+        if (painelLogado) painelLogado.style.display = "none";
+    }
+    
+    modal.style.display = "flex";
+    setTimeout(() => {
+        const inp = document.getElementById("senha-admin");
+        if (inp && !ehAdmin()) inp.focus();
+    }, 100);
+}
+
+function fecharModalAdmin() {
+    const modal = document.getElementById("modal-admin");
+    if (modal) modal.style.display = "none";
+}
+
+function validarLoginAdmin(e) {
+    if (e) e.preventDefault();
+    const inputSenha = document.getElementById("senha-admin");
+    const senhaDigitada = inputSenha ? inputSenha.value.trim() : "";
+    const senhaCorreta = obterSenhaAdmin();
+    
+    if (senhaDigitada === senhaCorreta) {
+        sessionStorage.setItem(SS_IS_ADMIN, "true");
+        atualizarUIAdmin();
+        fecharModalAdmin();
+        toast("Modo Administrador ativado!");
+    } else {
+        const err = document.getElementById("erro-senha-admin");
+        if (err) err.style.display = "block";
+        if (inputSenha) { inputSenha.focus(); inputSenha.select(); }
+    }
+}
+
+function logoutAdmin() {
+    sessionStorage.removeItem(SS_IS_ADMIN);
+    atualizarUIAdmin();
+    toast("Você saiu do modo Administrador.", "info");
+    const telaAtivaBtn = document.querySelector(".nav-btn.ativo");
+    const telaAtual = telaAtivaBtn ? telaAtivaBtn.dataset.tela : null;
+    if (telaAtual === "gerenciar" || telaAtual === "cadastro-oficio") {
+        irPara("buscar");
+    }
+}
+
+function alterarSenhaAdmin(e) {
+    if (e) e.preventDefault();
+    const atual = document.getElementById("senha-atual").value.trim();
+    const nova = document.getElementById("nova-senha").value.trim();
+    const confirma = document.getElementById("confirma-senha").value.trim();
+    const err = document.getElementById("erro-alterar-senha");
+    
+    if (atual !== obterSenhaAdmin()) {
+        if (err) { err.textContent = "Senha atual incorreta."; err.style.display = "block"; }
+        return;
+    }
+    if (!nova || nova.length < 4) {
+        if (err) { err.textContent = "A nova senha deve ter pelo menos 4 caracteres."; err.style.display = "block"; }
+        return;
+    }
+    if (nova !== confirma) {
+        if (err) { err.textContent = "As senhas digitadas não coincidem."; err.style.display = "block"; }
+        return;
+    }
+    
+    localStorage.setItem(LS_ADMIN_PASS, nova);
+    toast("Senha de Administrador alterada!");
+    fecharModalAdmin();
+}
+
+function toggleMostrarSenha(inputId, iconeId) {
+    const inp = document.getElementById(inputId || "senha-admin");
+    const ico = document.getElementById(iconeId || "icone-ver-senha-1");
+    if (!inp) return;
+    if (inp.type === "password") {
+        inp.type = "text";
+        if (ico) ico.className = "fas fa-eye-slash";
+    } else {
+        inp.type = "password";
+        if (ico) ico.className = "fas fa-eye";
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  VARREDURA COMPLETA DE DADOS (FIREBASE + LOCALSTORAGE)
+// ═══════════════════════════════════════════════════════════════
+async function varreduraCompletaDados() {
+    toast("Realizando varredura completa por modelos e assuntos...", "info");
+    const mapaModelos = new Map();
+    const mapaAssuntos = new Map();
+
+    // 1. Varredura no LocalStorage
+    ["ga_modelos", "modelos", "modelos_oficio", "oficios"].forEach(key => {
+        const itens = lsGet(key, []);
+        if (Array.isArray(itens)) {
+            itens.forEach(m => { if (m && (m.titulo || m.corpo)) mapaModelos.set(m.id || ("loc_" + Math.random()), m); });
+        }
+    });
+
+    ["ga_assuntos", "assuntos", "lista_assuntos"].forEach(key => {
+        const itens = lsGet(key, []);
+        if (Array.isArray(itens)) {
+            itens.forEach(a => { if (a && (a.titulo || a.descricao)) mapaAssuntos.set(a.id || ("loc_" + Math.random()), a); });
+        }
+    });
+
+    // 2. Varredura nas coleções do Firestore
+    if (db) {
+        const colecoesModelos = ["modelos_oficio", "modelos", "oficios"];
+        for (const col of colecoesModelos) {
+            try {
+                const snap = await db.collection(col).limit(LIMITE).get();
+                snap.forEach(doc => {
+                    const data = doc.data();
+                    if (data && (data.titulo || data.corpo)) mapaModelos.set(doc.id, Object.assign({ id: doc.id }, data));
+                });
+            } catch (err) {}
+        }
+
+        const colecoesAssuntos = ["assuntos", "gerador_assuntos"];
+        for (const col of colecoesAssuntos) {
+            try {
+                const snap = await db.collection(col).limit(LIMITE).get();
+                snap.forEach(doc => {
+                    const data = doc.data();
+                    if (data && (data.titulo || data.descricao)) mapaAssuntos.set(doc.id, Object.assign({ id: doc.id }, data));
+                });
+            } catch (err) {}
+        }
+    }
+
+    // 3. Atualiza listaCache
+    listaCache = Array.from(mapaAssuntos.values());
+
+    // 4. Se não houver modelos de ofício cadastrados, garante os modelos de documento oficiais padrão
+    const modelosIniciais = garantirModelosIniciais();
+    modelosIniciais.forEach(m => { if (!mapaModelos.has(m.id)) mapaModelos.set(m.id, m); });
+
+    listaModelosCache = Array.from(mapaModelos.values());
+
+    categoriasCache.clear();
+    listaCache.forEach(a => { if (a.categoria) categoriasCache.add(a.categoria); });
+
+    atualizarContadorModelos(listaModelosCache.length);
+    atualizarContador(listaCache.length);
+    atualizarDatalist();
+
+    renderListaModelos(listaModelosCache);
+    if (document.getElementById("tela-gerenciar")?.classList.contains("ativa")) filtrarLista();
+    if (document.getElementById("tela-buscar")?.classList.contains("ativa")) renderInicio();
+
+    toast(`Varredura concluída: ${listaCache.length} assuntos e ${listaModelosCache.length} modelos unificados!`);
+}
