@@ -997,6 +997,8 @@ async function carregarModelos() {
 function atualizarContadorModelos(n) {
     const mc = document.getElementById("lista-modelos-count");
     if (mc) mc.textContent = n + (n === 1 ? " modelo" : " modelos");
+    const tmc = document.getElementById("total-modelos-count");
+    if (tmc) tmc.textContent = n;
 }
 
 function renderListaModelos(modelos) {
