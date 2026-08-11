@@ -2,14 +2,13 @@
 //  CONFIGURAÇÃO FIREBASE
 // ═══════════════════════════════════════════════════════════════
 const firebaseConfig = {
-  apiKey:            "AIzaSyC1iKoTVmwb47pJhVkrLyuLLPrwGujTx-A",
-  authDomain:        "gerador-de-assuntos.firebaseapp.com",
-  databaseURL:       "https://gerador-de-assuntos-default-rtdb.firebaseio.com",
-  projectId:         "gerador-de-assuntos",
-  storageBucket:     "gerador-de-assuntos.firebasestorage.app",
-  messagingSenderId: "660561361564",
-  appId:             "1:660561361564:web:1c790461998d2ed35e0b59",
-  measurementId:     "G-8K0EEXN066"
+  apiKey: "AIzaSyApOPpXrpN1-tnM7xvKgNlaKI_UA_s-D60",
+  authDomain: "gerador-de-assuntos-9bfe4.firebaseapp.com",
+  projectId: "gerador-de-assuntos-9bfe4",
+  storageBucket: "gerador-de-assuntos-9bfe4.firebasestorage.app",
+  messagingSenderId: "273319840643",
+  appId: "1:273319840643:web:4f1f2b6979c39e8c0a44b6",
+  measurementId: "G-5X8SSQRQ8S"
 };
 
 let db, assuntosRef, modelosRef, auth;
