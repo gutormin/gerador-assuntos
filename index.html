@@ -1229,9 +1229,9 @@ textarea {
                 <div class="form-card-body" style="padding: 24px;">
                     <input type="hidden" id="e-id">
                     
-                    <!-- Seção 1: Tipo & Contato -->
+                    <!-- Seção 1: Tipo & Tratamento -->
                     <h3 style="font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.7px; color:var(--accent); margin-bottom:16px; border-bottom:1px solid var(--border); padding-bottom:8px;">
-                        <i class="fas fa-sliders" style="margin-right:6px;"></i> Parâmetros de Tipo e Contato
+                        <i class="fas fa-sliders" style="margin-right:6px;"></i> Parâmetros de Tipo e Tratamento
                     </h3>
                     
                     <div class="form-row cols-2" style="margin-bottom:16px; display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
@@ -1243,35 +1243,22 @@ textarea {
                                 <option value="circular">Ofício Circular</option>
                             </select>
                         </div>
-                        <div class="form-group">
-                            <label for="e-competencia">Competência / Área <span class="obrig">*</span></label>
-                            <input type="text" id="e-competencia" placeholder="Ex: Cível, NATJUS, Geral" style="width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:var(--r-sm); font-family:inherit; font-size:0.88rem; outline:none;">
-                            <span class="field-err" id="err-e-competencia" style="color:var(--danger); font-size:0.75rem; display:block; margin-top:2px;"></span>
-                        </div>
-                    </div>
-
-                    <div class="form-row cols-2" style="margin-bottom:16px; display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
-                        <div class="form-group">
-                            <label for="e-email-contato">E-mail para Contato</label>
-                            <input type="email" id="e-email-contato" placeholder="exemplo@tjgo.jus.br" style="width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:var(--r-sm); font-family:inherit; font-size:0.88rem; outline:none;">
-                        </div>
-                        <div class="form-group">
-                            <label for="e-telefone-contato">Telefone / Ramal</label>
-                            <input type="text" id="e-telefone-contato" placeholder="(62) 3328-1000" style="width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:var(--r-sm); font-family:inherit; font-size:0.88rem; outline:none;">
-                        </div>
-                    </div>
-
-                    <div class="form-row cols-1" style="margin-bottom:24px; display:grid; grid-template-columns: 1fr; gap:12px;">
                         <div class="form-group" id="group-e-tratamento">
                             <label for="e-tratamento">Pronome de Tratamento <span class="obrig">*</span></label>
                             <input type="text" id="e-tratamento" placeholder="Ex: A Sua Excelência o Senhor" list="pronomes-lista" oninput="calcularEnderecoPreview()" style="width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:var(--r-sm); font-family:inherit; font-size:0.88rem; outline:none;">
-                            <datalist id="pronomes-lista">
-                                <option value="A Sua Excelência o Senhor"></option>
-                                <option value="A Sua Senhoria o Senhor"></option>
-                                <option value="Ao Senhor"></option>
-                                <option value="Excelentíssimo Senhor Juiz"></option>
-                            </datalist>
+                            <datalist id="pronomes-lista"></datalist>
                             <span class="field-err" id="err-e-tratamento" style="color:var(--danger); font-size:0.75rem; display:block; margin-top:2px;"></span>
+                        </div>
+                    </div>
+
+                    <!-- Linha para cadastrar novos pronomes -->
+                    <div class="form-row cols-1" id="group-e-novo-pronome" style="margin-bottom:24px; display:grid; grid-template-columns: 1fr; gap:12px;">
+                        <div class="form-group" style="background:var(--sand-200); padding:12px; border-radius:var(--r-sm); border:1px solid var(--border);">
+                            <label style="font-size:0.75rem; font-weight:700; color:var(--ink-muted); margin-bottom:6px; display:block;">Cadastrar Novo Pronome de Tratamento</label>
+                            <div style="display:flex; gap:8px;">
+                                <input type="text" id="e-novo-pronome-val" placeholder="Ex: A Sua Excelência a Senhora" style="flex:1; padding:8px 12px; border:1.5px solid var(--border); border-radius:var(--r-sm); font-family:inherit; font-size:0.85rem; outline:none; background:#fff;">
+                                <button type="button" class="btn btn-outline btn-sm" onclick="adicionarNovoPronome()" style="padding:0 16px; font-size:0.8rem;"><i class="fas fa-plus"></i> Cadastrar</button>
+                            </div>
                         </div>
                     </div>
 
