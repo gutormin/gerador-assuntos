@@ -105,6 +105,8 @@ const LIMITE = 500;
 const LS_FAV = "ga_favoritos";
 const LS_HIST = "ga_historico";
 const LS_USOS = "ga_usos";
+const LS_PRONOMES = "ga_pronomes_custom";
+const LS_VOCATIVOS = "ga_vocativos_custom";
 
 function lsGet(chave, padrao) {
     try { return JSON.parse(localStorage.getItem(chave)) || padrao; }
@@ -1975,14 +1977,10 @@ async function adicionarNovoPronome() {
         return;
     }
     try {
-        const docRef = enderecamentosRef.doc("config_pronomes");
-        const docSnap = await docRef.get();
-        if (docSnap.exists) {
-            await docRef.update({
-                lista: firebase.firestore.FieldValue.arrayUnion(val)
-            });
-        } else {
-            await docRef.set({ lista: [val], vocativos: [] });
+        let customPronomes = lsGet(LS_PRONOMES, []);
+        if (!customPronomes.includes(val)) {
+            customPronomes.push(val);
+            lsSet(LS_PRONOMES, customPronomes);
         }
         toast("Pronome de tratamento cadastrado!");
         document.getElementById("e-novo-pronome-val").value = "";
@@ -2000,14 +1998,10 @@ async function adicionarNovoVocativo() {
         return;
     }
     try {
-        const docRef = enderecamentosRef.doc("config_pronomes");
-        const docSnap = await docRef.get();
-        if (docSnap.exists) {
-            await docRef.update({
-                vocativos: firebase.firestore.FieldValue.arrayUnion(val)
-            });
-        } else {
-            await docRef.set({ lista: [], vocativos: [val] });
+        let customVocativos = lsGet(LS_VOCATIVOS, []);
+        if (!customVocativos.includes(val)) {
+            customVocativos.push(val);
+            lsSet(LS_VOCATIVOS, customVocativos);
         }
         toast("Vocativo cadastrado!");
         document.getElementById("e-novo-vocativo-val").value = "";
@@ -2020,42 +2014,27 @@ async function adicionarNovoVocativo() {
 
 async function carregarPronomes() {
     try {
-        const doc = await enderecamentosRef.doc("config_pronomes").get();
-        let lista = [];
-        let vocativos = [];
-        if (doc.exists) {
-            const data = doc.data();
-            if (data) {
-                if (Array.isArray(data.lista)) lista = data.lista;
-                if (Array.isArray(data.vocativos)) vocativos = data.vocativos;
-            }
-        }
+        let customPronomes = lsGet(LS_PRONOMES, []);
+        let customVocativos = lsGet(LS_VOCATIVOS, []);
         
-        let alterado = false;
-        if (lista.length === 0) {
-            lista = [
-                "A Sua Excelência o Senhor",
-                "A Sua Senhoria o Senhor",
-                "Ao Senhor",
-                "Excelentíssimo Senhor Juiz"
-            ];
-            alterado = true;
-        }
-        if (vocativos.length === 0) {
-            vocativos = [
-                "Excelentíssimo Senhor Juiz,",
-                "Senhor Coordenador,",
-                "Senhor Comandante-Geral,",
-                "Senhora Candidata,",
-                "Prezada Senhora,",
-                "Prezado Senhor,"
-            ];
-            alterado = true;
-        }
+        const padroesP = [
+            "A Sua Excelência o Senhor",
+            "A Sua Senhoria o Senhor",
+            "Ao Senhor",
+            "Excelentíssimo Senhor Juiz"
+        ];
         
-        if (alterado) {
-            await enderecamentosRef.doc("config_pronomes").set({ lista, vocativos });
-        }
+        const padroesV = [
+            "Excelentíssimo Senhor Juiz,",
+            "Senhor Coordenador,",
+            "Senhor Comandante-Geral,",
+            "Senhora Candidata,",
+            "Prezada Senhora,",
+            "Prezado Senhor,"
+        ];
+        
+        let lista = Array.from(new Set([...padroesP, ...customPronomes]));
+        let vocativos = Array.from(new Set([...padroesV, ...customVocativos]));
         
         lista.sort((a, b) => a.localeCompare(b));
         vocativos.sort((a, b) => a.localeCompare(b));
