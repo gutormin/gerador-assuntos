@@ -11,7 +11,7 @@ const firebaseConfig = {
   measurementId: "G-5X8SSQRQ8S"
 };
 
-let db, assuntosRef, modelosRef, enderecamentosRef, pronomesRef, auth;
+let db, assuntosRef, modelosRef, enderecamentosRef, auth;
 
 try {
     firebase.initializeApp(firebaseConfig);
@@ -19,7 +19,6 @@ try {
     assuntosRef = db.collection("assuntos");
     modelosRef = db.collection("modelos_oficio");
     enderecamentosRef = db.collection("enderecamentos");
-    pronomesRef = db.collection("pronomes_tratamento");
     auth = firebase.auth();
     auth.signInAnonymously().catch((err) => {
         console.error("Erro na autenticacao anonima:", err);
@@ -1748,10 +1747,12 @@ async function carregarEnderecamentos() {
     
     try {
         const snap = await enderecamentosRef.get();
-        todosEnderecamentos = snap.docs.map(doc => {
-            const d = doc.data();
-            return Object.assign({ id: doc.id }, d, { criadoEm: d.criadoEm ? d.criadoEm.toMillis() : 0 });
-        });
+        todosEnderecamentos = snap.docs
+            .filter(doc => doc.id !== "config_pronomes")
+            .map(doc => {
+                const d = doc.data();
+                return Object.assign({ id: doc.id }, d, { criadoEm: d.criadoEm ? d.criadoEm.toMillis() : 0 });
+            });
         todosEnderecamentos.sort((a,b) => b.criadoEm - a.criadoEm);
         renderEnderecamentos();
     } catch(e) {
@@ -1956,7 +1957,15 @@ async function adicionarNovoPronome() {
         return;
     }
     try {
-        await pronomesRef.add({ texto: val, criadoEm: firebase.firestore.FieldValue.serverTimestamp() });
+        const docRef = enderecamentosRef.doc("config_pronomes");
+        const docSnap = await docRef.get();
+        if (docSnap.exists) {
+            await docRef.update({
+                lista: firebase.firestore.FieldValue.arrayUnion(val)
+            });
+        } else {
+            await docRef.set({ lista: [val] });
+        }
         toast("Pronome de tratamento cadastrado!");
         document.getElementById("e-novo-pronome-val").value = "";
         await carregarPronomes();
@@ -1968,12 +1977,14 @@ async function adicionarNovoPronome() {
 
 async function carregarPronomes() {
     try {
-        const snap = await pronomesRef.get();
+        const doc = await enderecamentosRef.doc("config_pronomes").get();
         let lista = [];
-        snap.forEach(doc => {
-            const d = doc.data();
-            if (d && d.texto) lista.push(d.texto);
-        });
+        if (doc.exists) {
+            const data = doc.data();
+            if (data && Array.isArray(data.lista)) {
+                lista = data.lista;
+            }
+        }
         
         if (lista.length === 0) {
             const padroes = [
@@ -1982,9 +1993,7 @@ async function carregarPronomes() {
                 "Ao Senhor",
                 "Excelentíssimo Senhor Juiz"
             ];
-            for (const p of padroes) {
-                await pronomesRef.add({ texto: p, criadoEm: firebase.firestore.FieldValue.serverTimestamp() });
-            }
+            await enderecamentosRef.doc("config_pronomes").set({ lista: padroes });
             lista = padroes;
         }
         
