@@ -11,13 +11,14 @@ const firebaseConfig = {
   measurementId: "G-5X8SSQRQ8S"
 };
 
-let db, assuntosRef, modelosRef, auth;
+let db, assuntosRef, modelosRef, enderecamentosRef, auth;
 
 try {
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
     assuntosRef = db.collection("assuntos");
     modelosRef = db.collection("modelos_oficio");
+    enderecamentosRef = db.collection("enderecamentos");
     auth = firebase.auth();
     auth.signInAnonymously().catch((err) => {
         console.error("Erro na autenticacao anonima:", err);
@@ -92,6 +93,10 @@ let listaModelosCache    = [];
 let debounceTimerModelos = null;
 const LS_MODELOS         = "ga_modelos";
 
+let todosEnderecamentos    = [];
+let filtroEnderecosAtual   = 'todos';
+let debounceEnderecosTimer = null;
+
 const LIMITE = 500;
 
 // Dados pessoais (localStorage)
@@ -113,13 +118,15 @@ let usos      = lsGet(LS_USOS, {});
 
 // NAVEGACAO
 function irPara(tela) {
-    if ((tela === "gerenciar" || tela === "cadastro-oficio") && !ehAdmin()) {
+    if ((tela === "gerenciar" || tela === "cadastro-oficio" || tela === "cadastro-endereco") && !ehAdmin()) {
         toast("Acesso exclusivo para administradores.", "error");
         abrirModalAdmin();
         return;
     }
     document.querySelectorAll(".tela").forEach(t => t.classList.remove("ativa"));
-    document.getElementById("tela-" + tela).classList.add("ativa");
+    const telaEl = document.getElementById("tela-" + tela);
+    if (telaEl) telaEl.classList.add("ativa");
+    
     document.querySelectorAll(".nav-btn").forEach(b => b.classList.toggle("ativo", b.dataset.tela === tela));
     if (tela === "buscar") {
         setTimeout(() => document.getElementById("busca")?.focus(), 100);
@@ -134,6 +141,13 @@ function irPara(tela) {
         carregarModelos();
         renderAssuntosCheckboxes();
         setTimeout(() => document.getElementById("modelo-titulo")?.focus(), 100);
+    }
+    if (tela === "enderecos") {
+        carregarEnderecamentos();
+        setTimeout(() => document.getElementById("busca-enderecos")?.focus(), 100);
+    }
+    if (tela === "cadastro-endereco") {
+        setTimeout(() => document.getElementById("e-competencia")?.focus(), 100);
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -1339,7 +1353,7 @@ window.addEventListener("load", () => {
             e.preventDefault();
             irPara("buscar");
         }
-        if (e.key === "Escape") { fecharModal(); fecharModalModelo(); fecharHistorico(); fecharModalAdmin(); }
+        if (e.key === "Escape") { fecharModal(); fecharModalModelo(); fecharHistorico(); fecharModalAdmin(); fecharModalEndereco(); }
     });
     carregarAssuntos();
     carregarModelos();
@@ -1564,4 +1578,388 @@ async function varreduraCompletaDados() {
     if (document.getElementById("tela-buscar")?.classList.contains("ativa")) renderInicio();
 
     toast(`Varredura concluída: ${listaCache.length} assuntos e ${listaModelosCache.length} modelos unificados!`);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  MÓDULO: ENDEREÇAMENTOS
+// ═══════════════════════════════════════════════════════════
+
+function calcularEnderecoPreview() {
+    const tipo = document.getElementById("e-tipo-doc").value;
+    const tratamento = document.getElementById("e-tratamento").value.trim();
+    const destinatario = document.getElementById("e-destinatario").value.trim();
+    const cargo = document.getElementById("e-cargo").value.trim();
+    const orgao = document.getElementById("e-orgao").value.trim();
+    const localidade = document.getElementById("e-localidade").value.trim();
+    
+    let result = "";
+    if (tipo === "oficio") {
+        if (tratamento) result += tratamento + "\n";
+        if (destinatario) result += destinatario + "\n";
+        if (cargo) result += cargo + "\n";
+        if (orgao) result += orgao + "\n";
+        if (localidade) result += localidade;
+    } else if (tipo === "circular") {
+        if (tratamento) result += tratamento + "\n";
+        if (cargo) result += cargo + "\n"; // Destinatário/Cargo coletivo
+        if (orgao) result += orgao + "\n";
+        if (localidade) result += localidade;
+    } else {
+        // E-mail
+        if (destinatario) result += "Prezado(a) " + destinatario + ",\n\n";
+        if (cargo) result += cargo + "\n";
+        if (orgao) result += orgao + "\n";
+    }
+    
+    document.getElementById("endereco-preview-box").innerText = result || "Preencha os campos para visualizar...";
+    return result;
+}
+
+function atualizarCamposEPreview() {
+    const tipo = document.getElementById("e-tipo-doc").value;
+    const groupTratamento = document.getElementById("group-e-tratamento");
+    const groupDestinatario = document.getElementById("group-e-destinatario");
+    const labelDestinatario = document.getElementById("label-e-destinatario");
+    const inputDestinatario = document.getElementById("e-destinatario");
+    const groupCargo = document.getElementById("group-e-cargo");
+    const labelCargo = groupCargo.querySelector("label");
+    const inputCargo = document.getElementById("e-cargo");
+    
+    // Resets
+    groupTratamento.style.display = "block";
+    groupDestinatario.style.display = "block";
+    groupCargo.style.display = "block";
+    labelDestinatario.innerHTML = 'Autoridade Destinatária <span class="obrig">*</span>';
+    inputDestinatario.placeholder = 'Ex: Doutor EDUARDO PEREZ OLIVEIRA';
+    labelCargo.innerHTML = 'Cargo / Função <span class="obrig">*</span>';
+    inputCargo.placeholder = 'Ex: Juiz de Direito e Coordenador do NATJUS';
+    
+    if (tipo === "circular") {
+        groupDestinatario.style.display = "none";
+        labelCargo.innerHTML = 'Destinatários Coletivos <span class="obrig">*</span>';
+        inputCargo.placeholder = 'Ex: Senhores Magistrados, Diretores de Foro e Chefes de Secretaria';
+    } else if (tipo === "email") {
+        groupTratamento.style.display = "none";
+        labelDestinatario.innerHTML = 'Nome do Destinatário <span class="obrig">*</span>';
+        inputDestinatario.placeholder = 'Ex: Eduardo Perez Oliveira';
+        labelCargo.innerHTML = 'Cargo / Função';
+    }
+    
+    calcularEnderecoPreview();
+}
+
+function copiarPreviewEndereco() {
+    const text = calcularEnderecoPreview();
+    if (!text || text === "Preencha os campos para visualizar...") {
+        toast("Preencha os dados do endereçamento primeiro.", "error");
+        return;
+    }
+    
+    const ta = document.createElement("textarea");
+    ta.style.position = "fixed"; ta.style.opacity = "0";
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try {
+        document.execCommand("copy");
+        toast("Endereçamento copiado!");
+    } catch {
+        toast("Não foi possível copiar.", "error");
+    }
+    document.body.removeChild(ta);
+}
+
+function novoEnderecamento() {
+    document.getElementById("e-id").value = "";
+    document.getElementById("e-tipo-doc").value = "oficio";
+    document.getElementById("e-competencia").value = "";
+    document.getElementById("e-email-contato").value = "";
+    document.getElementById("e-telefone-contato").value = "";
+    document.getElementById("e-tratamento").value = "A Sua Excelência o Senhor";
+    document.getElementById("e-destinatario").value = "";
+    document.getElementById("e-cargo").value = "";
+    document.getElementById("e-orgao").value = "Tribunal de Justiça do Estado de Goiás";
+    document.getElementById("e-localidade").value = "N E S T A";
+    document.getElementById("e-obs").value = "";
+    
+    document.getElementById("cad-end-titulo").textContent = "Novo Endereçamento";
+    document.getElementById("cad-end-sub").textContent = "Configure os dados para a geração automática do bloco formal";
+    
+    document.getElementById("err-e-competencia").textContent = "";
+    document.getElementById("err-e-tratamento").textContent = "";
+    document.getElementById("err-e-destinatario").textContent = "";
+    document.getElementById("err-e-cargo").textContent = "";
+    document.getElementById("err-e-orgao").textContent = "";
+    document.getElementById("err-e-localidade").textContent = "";
+    
+    atualizarCamposEPreview();
+    irPara("cadastro-endereco");
+}
+
+async function salvarEnderecamento() {
+    const id = document.getElementById("e-id").value;
+    const tipoDoc = document.getElementById("e-tipo-doc").value;
+    const competencia = document.getElementById("e-competencia").value.trim();
+    const emailContato = document.getElementById("e-email-contato").value.trim();
+    const telefoneContato = document.getElementById("e-telefone-contato").value.trim();
+    const tratamento = tipoDoc === "email" ? "" : document.getElementById("e-tratamento").value.trim();
+    const destinatario = tipoDoc === "circular" ? "" : document.getElementById("e-destinatario").value.trim();
+    const cargo = document.getElementById("e-cargo").value.trim();
+    const orgao = document.getElementById("e-orgao").value.trim();
+    const localidade = document.getElementById("e-localidade").value.trim();
+    const obs = document.getElementById("e-obs").value.trim();
+    const textoGerado = calcularEnderecoPreview();
+    
+    let ok = true;
+    if (!competencia) { document.getElementById("err-e-competencia").textContent = "Campo obrigatório."; ok = false; } else document.getElementById("err-e-competencia").textContent = "";
+    
+    if (tipoDoc !== "email") {
+        if (!tratamento) { document.getElementById("err-e-tratamento").textContent = "Campo obrigatório."; ok = false; } else document.getElementById("err-e-tratamento").textContent = "";
+    }
+    
+    if (tipoDoc !== "circular") {
+        if (!destinatario) { document.getElementById("err-e-destinatario").textContent = "Campo obrigatório."; ok = false; } else document.getElementById("err-e-destinatario").textContent = "";
+    }
+    
+    if (!cargo) { document.getElementById("err-e-cargo").textContent = "Campo obrigatório."; ok = false; } else document.getElementById("err-e-cargo").textContent = "";
+    if (!orgao) { document.getElementById("err-e-orgao").textContent = "Campo obrigatório."; ok = false; } else document.getElementById("err-e-orgao").textContent = "";
+    if (!localidade) { document.getElementById("err-e-localidade").textContent = "Campo obrigatório."; ok = false; } else document.getElementById("err-e-localidade").textContent = "";
+    
+    if (!ok) return;
+    
+    const dadosBase = {
+        tipoDoc, competencia, emailContato, telefoneContato, tratamento, destinatario, cargo, orgao, localidade, obs, textoGerado
+    };
+    
+    try {
+        if (id) {
+            await enderecamentosRef.doc(id).update(dadosBase);
+            toast("Endereçamento atualizado!");
+        } else {
+            await enderecamentosRef.add(Object.assign({}, dadosBase, { criadoEm: firebase.firestore.FieldValue.serverTimestamp() }));
+            toast("Endereçamento cadastrado!");
+        }
+        irPara("enderecos");
+    } catch(e) {
+        console.error("Erro ao salvar endereçamento:", e);
+        toast("Erro ao salvar.", "error");
+    }
+}
+
+async function carregarEnderecamentos() {
+    const el = document.getElementById("resultados_enderecos");
+    if (el) el.innerHTML = '<div class="empty"><i class="fas fa-spinner fa-spin"></i><p>Carregando endereçamentos...</p></div>';
+    
+    try {
+        const snap = await enderecamentosRef.get();
+        todosEnderecamentos = snap.docs.map(doc => {
+            const d = doc.data();
+            return Object.assign({ id: doc.id }, d, { criadoEm: d.criadoEm ? d.criadoEm.toMillis() : 0 });
+        });
+        todosEnderecamentos.sort((a,b) => b.criadoEm - a.criadoEm);
+        renderEnderecamentos();
+    } catch(e) {
+        console.error("Erro ao carregar endereçamentos:", e);
+        if (el) el.innerHTML = '<div class="empty"><i class="fas fa-circle-exclamation" style="color:var(--danger);"></i><p>Erro de conexão com o banco de dados.</p></div>';
+    }
+}
+
+function renderEnderecamentos() {
+    const el = document.getElementById("resultados_enderecos");
+    if (!el) return;
+    
+    const busca = (document.getElementById("busca-enderecos")?.value || "").toLowerCase();
+    let lista = [...todosEnderecamentos];
+    
+    if (busca) {
+        lista = lista.filter(e => 
+            (e.orgao && e.orgao.toLowerCase().includes(busca)) || 
+            (e.competencia && e.competencia.toLowerCase().includes(busca)) || 
+            (e.destinatario && e.destinatario.toLowerCase().includes(busca)) ||
+            (e.emailContato && e.emailContato.toLowerCase().includes(busca))
+        );
+    }
+    
+    if (filtroEnderecosAtual !== "todos") {
+        lista = lista.filter(e => e.tipoDoc === filtroEnderecosAtual);
+    }
+    
+    if (lista.length === 0) {
+        el.innerHTML = '<div class="empty"><i class="fas fa-magnifying-glass"></i><p>Nenhum endereço encontrado.</p></div>';
+        return;
+    }
+    
+    el.innerHTML = lista.map(e => {
+        let icon = "file-lines";
+        let labelTipo = "Ofício";
+        let classTipo = "badge-oficio";
+        if (e.tipoDoc === "email") {
+            icon = "envelope";
+            labelTipo = "E-mail";
+            classTipo = "badge-email";
+        } else if (e.tipoDoc === "circular") {
+            icon = "bullhorn";
+            labelTipo = "Circular";
+            classTipo = "badge-circular";
+        }
+        
+        const badgeTipo = '<span class="badge-tipo ' + classTipo + '"><i class="fas ' + icon + '"></i> ' + labelTipo + '</span>';
+        const destinatarioLabel = e.tipoDoc === "circular" ? "Circular Geral" : (e.destinatario || "-");
+        
+        const contatoInfo = [];
+        if (e.emailContato) contatoInfo.push('<div><a href="mailto:' + e.emailContato + '" style="color:var(--accent);text-decoration:none;"><i class="fas fa-envelope"></i> ' + e.emailContato + '</a></div>');
+        if (e.telefoneContato) contatoInfo.push('<div><i class="fas fa-phone"></i> ' + e.telefoneContato + '</div>');
+        
+        return '<div class="card-assunto" style="border-color: var(--border); margin-bottom: 12px;">' +
+            '<div class="card-top">' +
+                '<div class="card-cat"><i class="fas fa-map-location-dot"></i> ' + badgeTipo + '</div>' +
+                '<span class="tag" style="background:var(--accent-lt); color:var(--accent);">' + sanitize(e.competencia) + '</span>' +
+            '</div>' +
+            '<h3 class="card-titulo" style="margin-bottom: 4px;">' + sanitize(e.orgao) + '</h3>' +
+            (e.tipoDoc !== "circular" ? '<p style="font-size: 0.85rem; color: var(--ink-muted); margin-bottom: 6px;">' + sanitize(destinatarioLabel) + '</p>' : "") +
+            (contatoInfo.length > 0 ? '<div style="font-size: 0.78rem; color: var(--ink-muted); margin-bottom: 10px; display:flex; flex-direction:column; gap:2px;">' + contatoInfo.join("") + '</div>' : "") +
+            '<div class="card-assunto-texto" style="font-family: monospace; font-size: 0.8rem; line-height: 1.4; max-height: 100px; overflow: hidden; text-overflow: ellipsis; white-space: pre-wrap; margin-bottom: 12px; font-style: normal;">' + sanitize(e.textoGerado) + '</div>' +
+            '<div class="card-acoes" style="display:flex; justify-content:space-between; width:100%;">' +
+                '<div style="display:flex; gap:8px;">' +
+                    '<button type="button" class="btn btn-primary btn-sm" onclick="copiarTextoEndereco(this, \'' + e.id + '\')"><i class="fas fa-copy"></i> Copiar Bloco</button>' +
+                    '<button type="button" class="btn btn-outline btn-sm" onclick="verEnderecamento(\'' + e.id + '\')"><i class="fas fa-eye"></i> Detalhes</button>' +
+                '</div>' +
+                '<div class="admin-only" style="display:flex; gap:8px;">' +
+                    '<button type="button" class="btn btn-outline btn-sm" onclick="editarEnderecamento(\'' + e.id + '\')" style="color:var(--accent);"><i class="fas fa-pen"></i></button>' +
+                    '<button type="button" class="btn btn-outline btn-sm" onclick="confirmarExcluirEndereco(\'' + e.id + '\', \'' + e.orgao.replace(/'/g, "\\'") + '\')" style="color:var(--danger); border-color:rgba(179,48,48,0.3);"><i class="fas fa-trash"></i></button>' +
+                '</div>' +
+            '</div>' +
+        '</div>';
+    }).join("");
+}
+
+function buscarEnderecosDebounce() {
+    clearTimeout(debounceEnderecosTimer);
+    debounceEnderecosTimer = setTimeout(renderEnderecamentos, 250);
+    const limpar = document.getElementById("limpar-busca-enderecos");
+    if (limpar) limpar.style.display = document.getElementById("busca-enderecos").value ? "flex" : "none";
+}
+
+function limparBuscaEnderecos() {
+    document.getElementById("busca-enderecos").value = "";
+    document.getElementById("limpar-busca-enderecos").style.display = "none";
+    document.getElementById("busca-enderecos").focus();
+    renderEnderecamentos();
+}
+
+function setFiltroEnderecos(tipo, btn) {
+    filtroEnderecosAtual = tipo;
+    btn.parentNode.querySelectorAll(".cat-chip").forEach(b => b.classList.remove("ativo"));
+    btn.classList.add("ativo");
+    renderEnderecamentos();
+}
+
+function copiarTextoEndereco(btn, id) {
+    const e = todosEnderecamentos.find(x => x.id === id);
+    if (!e) return;
+    
+    const ta = document.createElement("textarea");
+    ta.style.position = "fixed"; ta.style.opacity = "0";
+    ta.value = e.textoGerado; document.body.appendChild(ta); ta.select();
+    try {
+        document.execCommand("copy");
+        toast("Endereçamento copiado!");
+        const icon = btn.querySelector("i");
+        const oldClass = icon.className;
+        icon.className = "fas fa-check";
+        setTimeout(() => { icon.className = oldClass; }, 1800);
+    } catch {
+        toast("Não foi possível copiar.", "error");
+    }
+    document.body.removeChild(ta);
+}
+
+function verEnderecamento(id) {
+    const e = todosEnderecamentos.find(x => x.id === id);
+    if (!e) return;
+    
+    let labelTipo = e.tipoDoc === "oficio" ? "Ofício Individual" : e.tipoDoc === "email" ? "E-mail" : "Ofício Circular";
+    
+    document.getElementById("modal-ver-endereco-body").innerHTML = `
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; font-size:0.88rem;">
+            <div><strong>Órgão / Instituição:</strong><div style="color:var(--ink-muted); margin-top:2px;">${sanitize(e.orgao)}</div></div>
+            <div><strong>Tipo de Documento:</strong><div style="color:var(--ink-muted); margin-top:2px;">${labelTipo}</div></div>
+            <div><strong>Competência / Área:</strong><div style="color:var(--ink-muted); margin-top:2px;">${sanitize(e.competencia)}</div></div>
+            <div><strong>E-mail:</strong><div style="color:var(--ink-muted); margin-top:2px;">${e.emailContato || "-"}</div></div>
+            <div><strong>Telefone:</strong><div style="color:var(--ink-muted); margin-top:2px;">${e.telefoneContato || "-"}</div></div>
+        </div>
+        <div style="margin-top:8px;">
+            <strong>Bloco de Endereçamento Oficial:</strong>
+            <div style="background:var(--sand-200); border-left:3px solid var(--accent); border-radius:0 var(--r-sm) var(--r-sm) 0; padding:12px; font-family:monospace; font-size:0.85rem; line-height:1.4; color:var(--ink); white-space:pre-wrap; max-height:160px; overflow-y:auto; margin-top:6px;">${sanitize(e.textoGerado)}</div>
+        </div>
+        ${e.obs ? `<div style="margin-top:4px;"><strong>Observações:</strong><div style="background:var(--sand-200); padding:10px; border-radius:var(--r-sm); font-size:0.82rem; color:var(--ink-muted); margin-top:4px; font-style:italic;">${sanitize(e.obs)}</div></div>` : ""}
+    `;
+    
+    document.getElementById("modal-ver-endereco-footer").innerHTML = `
+        <button class="btn btn-ghost" onclick="fecharModalEndereco()">Fechar</button>
+        <button class="btn btn-primary" onclick="copiarModalEndereco('${e.id}')"><i class="fas fa-copy"></i> Copiar Bloco</button>
+    `;
+    
+    const m = document.getElementById("modal-ver-endereco");
+    m.style.display = "flex";
+}
+
+function fecharModalEndereco() {
+    document.getElementById("modal-ver-endereco").style.display = "none";
+}
+
+function copiarModalEndereco(id) {
+    const e = todosEnderecamentos.find(x => x.id === id);
+    if (!e) return;
+    const ta = document.createElement("textarea");
+    ta.style.position = "fixed"; ta.style.opacity = "0";
+    ta.value = e.textoGerado; document.body.appendChild(ta); ta.select();
+    try {
+        document.execCommand("copy");
+        toast("Endereçamento copiado!");
+        fecharModalEndereco();
+    } catch {
+        toast("Não foi possível copiar.", "error");
+    }
+    document.body.removeChild(ta);
+}
+
+function editarEnderecamento(id) {
+    const e = todosEnderecamentos.find(x => x.id === id);
+    if (!e) return;
+    
+    document.getElementById("e-id").value = id;
+    document.getElementById("e-tipo-doc").value = e.tipoDoc;
+    document.getElementById("e-competencia").value = e.competencia || "";
+    document.getElementById("e-email-contato").value = e.emailContato || "";
+    document.getElementById("e-telefone-contato").value = e.telefoneContato || "";
+    document.getElementById("e-tratamento").value = e.tratamento || "";
+    document.getElementById("e-destinatario").value = e.destinatario || "";
+    document.getElementById("e-cargo").value = e.cargo || "";
+    document.getElementById("e-orgao").value = e.orgao || "";
+    document.getElementById("e-localidade").value = e.localidade || "";
+    document.getElementById("e-obs").value = e.obs || "";
+    
+    document.getElementById("cad-end-titulo").textContent = "Editar Endereçamento";
+    document.getElementById("cad-end-sub").textContent = "Altere os parâmetros do endereçamento";
+    
+    document.getElementById("err-e-competencia").textContent = "";
+    document.getElementById("err-e-tratamento").textContent = "";
+    document.getElementById("err-e-destinatario").textContent = "";
+    document.getElementById("err-e-cargo").textContent = "";
+    document.getElementById("err-e-orgao").textContent = "";
+    document.getElementById("err-e-localidade").textContent = "";
+    
+    atualizarCamposEPreview();
+    irPara("cadastro-endereco");
+}
+
+async function confirmarExcluirEndereco(id, orgao) {
+    if (!confirm('Deseja excluir permanentemente o endereçamento de "' + orgao + '"?')) return;
+    try {
+        await enderecamentosRef.doc(id).delete();
+        toast("Endereçamento removido.");
+        await carregarEnderecamentos();
+    } catch (error) {
+        console.error("Erro ao remover:", error);
+        toast("Erro ao remover.", "error");
+    }
 }
