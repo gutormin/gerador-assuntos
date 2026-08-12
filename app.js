@@ -1555,56 +1555,38 @@ async function varreduraCompletaDados() {
                 const snap = await db.collection(col).limit(LIMITE).get();
                 snap.forEach(doc => {
                     const data = doc.data();
-                    if (data && (data.async function adicionarNovoPronome() {
-    const val = document.getElementById("e-novo-pronome-val").value.trim();
-    if (!val) {
-        toast("Digite o pronome de tratamento.", "error");
-        return;
+                    if (data && (data.titulo || data.descricao)) mapaAssuntos.set(doc.id, Object.assign({ id: doc.id }, data));
+                });
+            } catch (err) {}
+        }
     }
-    try {
-        await pronomesRef.add({ texto: val, criadoEm: firebase.firestore.FieldValue.serverTimestamp() });
-        toast("Pronome de tratamento cadastrado!");
-        document.getElementById("e-novo-pronome-val").value = "";
-        await carregarPronomes();
-    } catch(e) {
-        console.error("Erro ao cadastrar pronome:", e);
-        toast("Erro ao cadastrar pronome.", "error");
-    }
+
+    // 3. Atualiza listaCache
+    listaCache = Array.from(mapaAssuntos.values());
+
+    // 4. Se não houver modelos de ofício cadastrados, garante os modelos de documento oficiais padrão
+    const modelosIniciais = garantirModelosIniciais();
+    modelosIniciais.forEach(m => { if (!mapaModelos.has(m.id)) mapaModelos.set(m.id, m); });
+
+    listaModelosCache = Array.from(mapaModelos.values());
+
+    categoriasCache.clear();
+    listaCache.forEach(a => { if (a.categoria) categoriasCache.add(a.categoria); });
+
+    atualizarContadorModelos(listaModelosCache.length);
+    atualizarContador(listaCache.length);
+    atualizarDatalist();
+
+    renderListaModelos(listaModelosCache);
+    if (document.getElementById("tela-gerenciar")?.classList.contains("ativa")) filtrarLista();
+    if (document.getElementById("tela-buscar")?.classList.contains("ativa")) renderInicio();
+
+    toast(`Varredura concluída: ${listaCache.length} assuntos e ${listaModelosCache.length} modelos unificados!`);
 }
 
-async function carregarPronomes() {
-    try {
-        const snap = await pronomesRef.get();
-        let lista = [];
-        snap.forEach(doc => {
-            const d = doc.data();
-            if (d && d.texto) lista.push(d.texto);
-        });
-        
-        if (lista.length === 0) {
-            const padroes = [
-                "A Sua Excelência o Senhor",
-                "A Sua Senhoria o Senhor",
-                "Ao Senhor",
-                "Excelentíssimo Senhor Juiz"
-            ];
-            for (const p of padroes) {
-                await pronomesRef.add({ texto: p, criadoEm: firebase.firestore.FieldValue.serverTimestamp() });
-            }
-            lista = padroes;
-        }
-        
-        lista.sort((a, b) => a.localeCompare(b));
-        todosPronomes = lista;
-        
-        const dl = document.getElementById("pronomes-lista");
-        if (dl) {
-            dl.innerHTML = todosPronomes.map(p => `<option value="${sanitize(p)}">`).join("");
-        }
-    } catch(e) {
-        console.error("Erro ao carregar pronomes:", e);
-    }
-}
+// ═══════════════════════════════════════════════════════════
+//  MÓDULO: ENDEREÇAMENTOS
+// ═══════════════════════════════════════════════════════════
 
 function calcularEnderecoPreview() {
     const tipo = document.getElementById("e-tipo-doc").value;
@@ -1964,5 +1946,56 @@ async function confirmarExcluirEndereco(id, orgao) {
     } catch (error) {
         console.error("Erro ao remover:", error);
         toast("Erro ao remover.", "error");
+    }
+}
+
+async function adicionarNovoPronome() {
+    const val = document.getElementById("e-novo-pronome-val").value.trim();
+    if (!val) {
+        toast("Digite o pronome de tratamento.", "error");
+        return;
+    }
+    try {
+        await pronomesRef.add({ texto: val, criadoEm: firebase.firestore.FieldValue.serverTimestamp() });
+        toast("Pronome de tratamento cadastrado!");
+        document.getElementById("e-novo-pronome-val").value = "";
+        await carregarPronomes();
+    } catch(e) {
+        console.error("Erro ao cadastrar pronome:", e);
+        toast("Erro ao cadastrar pronome.", "error");
+    }
+}
+
+async function carregarPronomes() {
+    try {
+        const snap = await pronomesRef.get();
+        let lista = [];
+        snap.forEach(doc => {
+            const d = doc.data();
+            if (d && d.texto) lista.push(d.texto);
+        });
+        
+        if (lista.length === 0) {
+            const padroes = [
+                "A Sua Excelência o Senhor",
+                "A Sua Senhoria o Senhor",
+                "Ao Senhor",
+                "Excelentíssimo Senhor Juiz"
+            ];
+            for (const p of padroes) {
+                await pronomesRef.add({ texto: p, criadoEm: firebase.firestore.FieldValue.serverTimestamp() });
+            }
+            lista = padroes;
+        }
+        
+        lista.sort((a, b) => a.localeCompare(b));
+        todosPronomes = lista;
+        
+        const dl = document.getElementById("pronomes-lista");
+        if (dl) {
+            dl.innerHTML = todosPronomes.map(p => `<option value="${sanitize(p)}">`).join("");
+        }
+    } catch(e) {
+        console.error("Erro ao carregar pronomes:", e);
     }
 }
