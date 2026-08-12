@@ -97,6 +97,7 @@ let todosEnderecamentos    = [];
 let filtroEnderecosAtual   = 'todos';
 let debounceEnderecosTimer = null;
 let todosPronomes          = [];
+let todosVocativos         = [];
 
 const LIMITE = 500;
 
@@ -1594,6 +1595,7 @@ function calcularEnderecoPreview() {
     const cargo = document.getElementById("e-cargo").value.trim();
     const orgao = document.getElementById("e-orgao").value.trim();
     const localidade = document.getElementById("e-localidade").value.trim();
+    const vocativo = document.getElementById("e-vocativo").value.trim();
     
     let result = "";
     if (tipo === "oficio") {
@@ -1602,13 +1604,19 @@ function calcularEnderecoPreview() {
         if (cargo) result += cargo + "\n";
         if (orgao) result += orgao + "\n";
         if (localidade) result += localidade;
+        if (vocativo) result += "\n\n" + vocativo;
     } else if (tipo === "circular") {
         if (tratamento) result += tratamento + "\n";
         if (cargo) result += cargo + "\n";
         if (orgao) result += orgao + "\n";
         if (localidade) result += localidade;
+        if (vocativo) result += "\n\n" + vocativo;
     } else {
-        if (destinatario) result += "Prezado(a) " + destinatario + ",\n\n";
+        if (vocativo) {
+            result += vocativo + "\n\n";
+        } else {
+            if (destinatario) result += "Prezado(a) " + destinatario + ",\n\n";
+        }
         if (cargo) result += cargo + "\n";
         if (orgao) result += orgao + "\n";
     }
@@ -1620,7 +1628,7 @@ function calcularEnderecoPreview() {
 function atualizarCamposEPreview() {
     const tipo = document.getElementById("e-tipo-doc").value;
     const groupTratamento = document.getElementById("group-e-tratamento");
-    const groupNovoPronome = document.getElementById("group-e-novo-pronome");
+    const rowVocativo = document.getElementById("row-e-vocativo");
     const groupDestinatario = document.getElementById("group-e-destinatario");
     const labelDestinatario = document.getElementById("label-e-destinatario");
     const inputDestinatario = document.getElementById("e-destinatario");
@@ -1629,7 +1637,7 @@ function atualizarCamposEPreview() {
     const inputCargo = document.getElementById("e-cargo");
     
     groupTratamento.style.display = "block";
-    groupNovoPronome.style.display = "block";
+    rowVocativo.style.display = "grid";
     groupDestinatario.style.display = "block";
     groupCargo.style.display = "block";
     labelDestinatario.innerHTML = 'Autoridade Destinatária <span class="obrig">*</span>';
@@ -1643,7 +1651,6 @@ function atualizarCamposEPreview() {
         inputCargo.placeholder = 'Ex: Senhores Magistrados, Diretores de Foro e Chefes de Secretaria';
     } else if (tipo === "email") {
         groupTratamento.style.display = "none";
-        groupNovoPronome.style.display = "none";
         labelDestinatario.innerHTML = 'Nome do Destinatário <span class="obrig">*</span>';
         inputDestinatario.placeholder = 'Ex: Eduardo Perez Oliveira';
         labelCargo.innerHTML = 'Cargo / Função';
@@ -1675,17 +1682,20 @@ function novoEnderecamento() {
     document.getElementById("e-id").value = "";
     document.getElementById("e-tipo-doc").value = "oficio";
     document.getElementById("e-tratamento").value = "A Sua Excelência o Senhor";
+    document.getElementById("e-vocativo").value = "";
     document.getElementById("e-destinatario").value = "";
     document.getElementById("e-cargo").value = "";
     document.getElementById("e-orgao").value = "Tribunal de Justiça do Estado de Goiás";
     document.getElementById("e-localidade").value = "N E S T A";
     document.getElementById("e-obs").value = "";
     document.getElementById("e-novo-pronome-val").value = "";
+    document.getElementById("e-novo-vocativo-val").value = "";
     
     document.getElementById("cad-end-titulo").textContent = "Novo Endereçamento";
     document.getElementById("cad-end-sub").textContent = "Configure os dados para a geração automática do bloco formal";
     
     document.getElementById("err-e-tratamento").textContent = "";
+    document.getElementById("err-e-vocativo").textContent = "";
     document.getElementById("err-e-destinatario").textContent = "";
     document.getElementById("err-e-cargo").textContent = "";
     document.getElementById("err-e-orgao").textContent = "";
@@ -1699,6 +1709,7 @@ async function salvarEnderecamento() {
     const id = document.getElementById("e-id").value;
     const tipoDoc = document.getElementById("e-tipo-doc").value;
     const tratamento = tipoDoc === "email" ? "" : document.getElementById("e-tratamento").value.trim();
+    const vocativo = document.getElementById("e-vocativo").value.trim();
     const destinatario = tipoDoc === "circular" ? "" : document.getElementById("e-destinatario").value.trim();
     const cargo = document.getElementById("e-cargo").value.trim();
     const orgao = document.getElementById("e-orgao").value.trim();
@@ -1712,6 +1723,8 @@ async function salvarEnderecamento() {
         if (!tratamento) { document.getElementById("err-e-tratamento").textContent = "Campo obrigatório."; ok = false; } else document.getElementById("err-e-tratamento").textContent = "";
     }
     
+    if (!vocativo) { document.getElementById("err-e-vocativo").textContent = "Campo obrigatório."; ok = false; } else document.getElementById("err-e-vocativo").textContent = "";
+    
     if (tipoDoc !== "circular") {
         if (!destinatario) { document.getElementById("err-e-destinatario").textContent = "Campo obrigatório."; ok = false; } else document.getElementById("err-e-destinatario").textContent = "";
     }
@@ -1723,7 +1736,7 @@ async function salvarEnderecamento() {
     if (!ok) return;
     
     const dadosBase = {
-        tipoDoc, tratamento, destinatario, cargo, orgao, localidade, obs, textoGerado
+        tipoDoc, tratamento, vocativo, destinatario, cargo, orgao, localidade, obs, textoGerado
     };
     
     try {
@@ -1772,7 +1785,8 @@ function renderEnderecamentos() {
         lista = lista.filter(e => 
             (e.orgao && e.orgao.toLowerCase().includes(busca)) || 
             (e.destinatario && e.destinatario.toLowerCase().includes(busca)) ||
-            (e.cargo && e.cargo.toLowerCase().includes(busca))
+            (e.cargo && e.cargo.toLowerCase().includes(busca)) ||
+            (e.vocativo && e.vocativo.toLowerCase().includes(busca))
         );
     }
     
@@ -1874,6 +1888,7 @@ function verEnderecamento(id) {
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; font-size:0.88rem;">
             <div><strong>Órgão / Instituição:</strong><div style="color:var(--ink-muted); margin-top:2px;">${sanitize(e.orgao)}</div></div>
             <div><strong>Tipo de Documento:</strong><div style="color:var(--ink-muted); margin-top:2px;">${labelTipo}</div></div>
+            ${e.vocativo ? `<div><strong>Vocativo:</strong><div style="color:var(--ink-muted); margin-top:2px;">${sanitize(e.vocativo)}</div></div>` : ""}
         </div>
         <div style="margin-top:8px;">
             <strong>Bloco de Endereçamento Oficial:</strong>
@@ -1918,17 +1933,20 @@ function editarEnderecamento(id) {
     document.getElementById("e-id").value = id;
     document.getElementById("e-tipo-doc").value = e.tipoDoc;
     document.getElementById("e-tratamento").value = e.tratamento || "";
+    document.getElementById("e-vocativo").value = e.vocativo || "";
     document.getElementById("e-destinatario").value = e.destinatario || "";
     document.getElementById("e-cargo").value = e.cargo || "";
     document.getElementById("e-orgao").value = e.orgao || "";
     document.getElementById("e-localidade").value = e.localidade || "";
     document.getElementById("e-obs").value = e.obs || "";
     document.getElementById("e-novo-pronome-val").value = "";
+    document.getElementById("e-novo-vocativo-val").value = "";
     
     document.getElementById("cad-end-titulo").textContent = "Editar Endereçamento";
     document.getElementById("cad-end-sub").textContent = "Altere os parâmetros do endereçamento";
     
     document.getElementById("err-e-tratamento").textContent = "";
+    document.getElementById("err-e-vocativo").textContent = "";
     document.getElementById("err-e-destinatario").textContent = "";
     document.getElementById("err-e-cargo").textContent = "";
     document.getElementById("err-e-orgao").textContent = "";
@@ -1964,7 +1982,7 @@ async function adicionarNovoPronome() {
                 lista: firebase.firestore.FieldValue.arrayUnion(val)
             });
         } else {
-            await docRef.set({ lista: [val] });
+            await docRef.set({ lista: [val], vocativos: [] });
         }
         toast("Pronome de tratamento cadastrado!");
         document.getElementById("e-novo-pronome-val").value = "";
@@ -1975,36 +1993,85 @@ async function adicionarNovoPronome() {
     }
 }
 
+async function adicionarNovoVocativo() {
+    const val = document.getElementById("e-novo-vocativo-val").value.trim();
+    if (!val) {
+        toast("Digite o vocativo.", "error");
+        return;
+    }
+    try {
+        const docRef = enderecamentosRef.doc("config_pronomes");
+        const docSnap = await docRef.get();
+        if (docSnap.exists) {
+            await docRef.update({
+                vocativos: firebase.firestore.FieldValue.arrayUnion(val)
+            });
+        } else {
+            await docRef.set({ lista: [], vocativos: [val] });
+        }
+        toast("Vocativo cadastrado!");
+        document.getElementById("e-novo-vocativo-val").value = "";
+        await carregarPronomes();
+    } catch(e) {
+        console.error("Erro ao cadastrar vocativo:", e);
+        toast("Erro ao cadastrar vocativo.", "error");
+    }
+}
+
 async function carregarPronomes() {
     try {
         const doc = await enderecamentosRef.doc("config_pronomes").get();
         let lista = [];
+        let vocativos = [];
         if (doc.exists) {
             const data = doc.data();
-            if (data && Array.isArray(data.lista)) {
-                lista = data.lista;
+            if (data) {
+                if (Array.isArray(data.lista)) lista = data.lista;
+                if (Array.isArray(data.vocativos)) vocativos = data.vocativos;
             }
         }
         
+        let alterado = false;
         if (lista.length === 0) {
-            const padroes = [
+            lista = [
                 "A Sua Excelência o Senhor",
                 "A Sua Senhoria o Senhor",
                 "Ao Senhor",
                 "Excelentíssimo Senhor Juiz"
             ];
-            await enderecamentosRef.doc("config_pronomes").set({ lista: padroes });
-            lista = padroes;
+            alterado = true;
+        }
+        if (vocativos.length === 0) {
+            vocativos = [
+                "Excelentíssimo Senhor Juiz,",
+                "Senhor Coordenador,",
+                "Senhor Comandante-Geral,",
+                "Senhora Candidata,",
+                "Prezada Senhora,",
+                "Prezado Senhor,"
+            ];
+            alterado = true;
+        }
+        
+        if (alterado) {
+            await enderecamentosRef.doc("config_pronomes").set({ lista, vocativos });
         }
         
         lista.sort((a, b) => a.localeCompare(b));
-        todosPronomes = lista;
+        vocativos.sort((a, b) => a.localeCompare(b));
         
-        const dl = document.getElementById("pronomes-lista");
-        if (dl) {
-            dl.innerHTML = todosPronomes.map(p => `<option value="${sanitize(p)}">`).join("");
+        todosPronomes = lista;
+        todosVocativos = vocativos;
+        
+        const dlP = document.getElementById("pronomes-lista");
+        if (dlP) {
+            dlP.innerHTML = todosPronomes.map(p => `<option value="${sanitize(p)}">`).join("");
+        }
+        const dlV = document.getElementById("vocativos-lista");
+        if (dlV) {
+            dlV.innerHTML = todosVocativos.map(v => `<option value="${sanitize(v)}">`).join("");
         }
     } catch(e) {
-        console.error("Erro ao carregar pronomes:", e);
+        console.error("Erro ao carregar pronomes e vocativos:", e);
     }
 }
