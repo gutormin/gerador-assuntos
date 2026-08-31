@@ -1198,7 +1198,10 @@ textarea {
                 <button class="cat-chip" onclick="setFiltroEnderecos('email', this)">E-mails</button>
                 <button class="cat-chip" onclick="setFiltroEnderecos('circular', this)">Circulares</button>
             </div>
-            <button class="btn btn-primary admin-only" onclick="novoEnderecamento()"><i class="fas fa-plus"></i> Novo Endereçamento</button>
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <button class="btn btn-outline" onclick="abrirModalPronomesVocativos('todos')"><i class="fas fa-list-check"></i> Consultar Vocativos & Endereçamentos</button>
+                <button class="btn btn-primary admin-only" onclick="novoEnderecamento()"><i class="fas fa-plus"></i> Novo Endereçamento</button>
+            </div>
         </div>
 
         <div id="resultados_enderecos">
@@ -1260,20 +1263,26 @@ textarea {
                         </div>
                     </div>
 
-                    <!-- Linha para cadastrar novos pronomes e vocativos -->
+                    <!-- Linha para cadastrar e consultar pronomes e vocativos -->
                     <div class="form-row cols-2" id="group-e-novos-parametros" style="margin-bottom:24px; display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
                         <div class="form-group" style="background:var(--sand-200); padding:12px; border-radius:var(--r-sm); border:1px solid var(--border);">
-                            <label style="font-size:0.75rem; font-weight:700; color:var(--ink-muted); margin-bottom:6px; display:block;">Cadastrar Novo Endereçamento</label>
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                <label style="font-size:0.75rem; font-weight:700; color:var(--ink-muted); margin-bottom:0; display:block;">Cadastrar Novo Endereçamento</label>
+                                <button type="button" class="btn btn-ghost btn-sm" onclick="abrirModalPronomesVocativos('pronomes')" style="font-size:0.75rem; padding:2px 8px; color:var(--accent); font-weight:600;" title="Consultar endereçamentos cadastrados"><i class="fas fa-list"></i> Consultar</button>
+                            </div>
                             <div style="display:flex; gap:8px;">
                                 <input type="text" id="e-novo-pronome-val" placeholder="Ex: À Senhora" style="flex:1; padding:8px 12px; border:1.5px solid var(--border); border-radius:var(--r-sm); font-family:inherit; font-size:0.85rem; outline:none; background:#fff;">
-                                <button type="button" class="btn btn-outline btn-sm" onclick="adicionarNovoPronome()" style="padding:0 12px; font-size:0.8rem;"><i class="fas fa-plus"></i></button>
+                                <button type="button" class="btn btn-outline btn-sm" onclick="adicionarNovoPronome()" style="padding:0 12px; font-size:0.8rem;" title="Adicionar novo"><i class="fas fa-plus"></i></button>
                             </div>
                         </div>
                         <div class="form-group" style="background:var(--sand-200); padding:12px; border-radius:var(--r-sm); border:1px solid var(--border);">
-                            <label style="font-size:0.75rem; font-weight:700; color:var(--ink-muted); margin-bottom:6px; display:block;">Cadastrar Novo Vocativo</label>
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                <label style="font-size:0.75rem; font-weight:700; color:var(--ink-muted); margin-bottom:0; display:block;">Cadastrar Novo Vocativo</label>
+                                <button type="button" class="btn btn-ghost btn-sm" onclick="abrirModalPronomesVocativos('vocativos')" style="font-size:0.75rem; padding:2px 8px; color:var(--accent); font-weight:600;" title="Consultar vocativos cadastrados"><i class="fas fa-list"></i> Consultar</button>
+                            </div>
                             <div style="display:flex; gap:8px;">
                                 <input type="text" id="e-novo-vocativo-val" placeholder="Ex: Senhora Candidata," style="flex:1; padding:8px 12px; border:1.5px solid var(--border); border-radius:var(--r-sm); font-family:inherit; font-size:0.85rem; outline:none; background:#fff;">
-                                <button type="button" class="btn btn-outline btn-sm" onclick="adicionarNovoVocativo()" style="padding:0 12px; font-size:0.8rem;"><i class="fas fa-plus"></i></button>
+                                <button type="button" class="btn btn-outline btn-sm" onclick="adicionarNovoVocativo()" style="padding:0 12px; font-size:0.8rem;" title="Adicionar novo"><i class="fas fa-plus"></i></button>
                             </div>
                         </div>
                     </div>
@@ -1365,6 +1374,43 @@ textarea {
         <div class="modal-body" id="modal-ver-endereco-body" style="display:grid; gap:16px; max-height:420px; overflow-y:auto; padding:16px 20px;">
         </div>
         <div class="modal-footer" id="modal-ver-endereco-footer">
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     MODAL: CONSULTAR E GERENCIAR VOCATIVOS & PRONOMES (ENDEREÇAMENTOS)
+══════════════════════════════════════════════════════════ -->
+<div id="modal-gerenciar-pronomes-vocativos" style="display:none; position:fixed; inset:0; z-index:550; background:rgba(10,20,15,.55); backdrop-filter:blur(4px); align-items:center; justify-content:center; padding:20px;">
+    <div class="modal-box" style="max-width: 640px; width: 100%; max-height: 85vh; display: flex; flex-direction: column;">
+        <div class="modal-header">
+            <div>
+                <h3><i class="fas fa-list-check"></i> Vocativos e Endereçamentos</h3>
+                <p style="color: rgba(255,255,255,0.7); font-size: 0.8rem; margin-top: 2px;">Consulte, pesquise, copie e gerencie opções cadastradas</p>
+            </div>
+            <button class="modal-close" onclick="fecharModalPronomesVocativos()"><i class="fas fa-xmark"></i></button>
+        </div>
+        <div class="modal-body" style="padding: 16px 20px; overflow-y: auto; flex: 1;">
+            <!-- Tabs do Modal -->
+            <div style="display: flex; gap: 8px; margin-bottom: 14px; border-bottom: 1px solid var(--border); padding-bottom: 10px; flex-wrap: wrap;">
+                <button class="cat-chip ativo" id="tab-pv-todos" onclick="alternarTabPV('todos')">Todos</button>
+                <button class="cat-chip" id="tab-pv-pronomes" onclick="alternarTabPV('pronomes')">Pronomes (Endereçamentos)</button>
+                <button class="cat-chip" id="tab-pv-vocativos" onclick="alternarTabPV('vocativos')">Vocativos</button>
+            </div>
+            
+            <!-- Campo de Busca no Modal -->
+            <div style="position: relative; margin-bottom: 14px;">
+                <input type="text" id="busca-modal-pv" placeholder="Pesquisar vocativo ou pronome..." oninput="filtrarModalPV()" style="width: 100%; padding: 8px 12px 8px 34px; border: 1.5px solid var(--border); border-radius: var(--r-sm); font-size: 0.88rem; outline: none; font-family: inherit;">
+                <i class="fas fa-magnifying-glass" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--ink-muted); font-size: 0.82rem;"></i>
+            </div>
+
+            <!-- Lista de Itens -->
+            <div id="lista-modal-pv-itens" style="display: flex; flex-direction: column; gap: 8px; min-height: 120px;">
+            </div>
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; background: var(--sand-100); border-top: 1px solid var(--border); padding: 12px 20px;">
+            <div style="font-size: 0.78rem; color: var(--ink-muted);" id="contagem-modal-pv">0 itens cadastrados</div>
+            <button class="btn btn-ghost" onclick="fecharModalPronomesVocativos()">Fechar</button>
         </div>
     </div>
 </div>

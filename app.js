@@ -107,6 +107,7 @@ const LS_HIST = "ga_historico";
 const LS_USOS = "ga_usos";
 const LS_PRONOMES = "ga_pronomes_custom";
 const LS_VOCATIVOS = "ga_vocativos_custom";
+const LS_ENDERECOS = "ga_enderecamentos";
 
 function lsGet(chave, padrao) {
     try { return JSON.parse(localStorage.getItem(chave)) || padrao; }
@@ -1357,11 +1358,12 @@ window.addEventListener("load", () => {
             e.preventDefault();
             irPara("buscar");
         }
-        if (e.key === "Escape") { fecharModal(); fecharModalModelo(); fecharHistorico(); fecharModalAdmin(); fecharModalEndereco(); }
+        if (e.key === "Escape") { fecharModal(); fecharModalModelo(); fecharHistorico(); fecharModalAdmin(); fecharModalEndereco(); fecharModalPronomesVocativos(); }
     });
     carregarAssuntos();
     carregarModelos();
     carregarPronomes();
+    carregarEnderecamentos();
 
     if (auth) {
         auth.onAuthStateChanged((user) => { 
@@ -1369,6 +1371,7 @@ window.addEventListener("load", () => {
                 carregarAssuntos(); 
                 carregarModelos();
                 carregarPronomes();
+                carregarEnderecamentos();
             } 
         });
     }
@@ -1738,41 +1741,97 @@ async function salvarEnderecamento() {
     if (!ok) return;
     
     const dadosBase = {
-        tipoDoc, tratamento, vocativo, destinatario, cargo, orgao, localidade, obs, textoGerado
+        tipoDoc, tratamento, vocativo, destinatario, cargo, orgao, localidade, obs, textoGerado, criadoEm: Date.now()
     };
     
-    try {
-        if (id) {
-            await enderecamentosRef.doc(id).update(dadosBase);
-            toast("Endereçamento atualizado!");
-        } else {
-            await enderecamentosRef.add(Object.assign({}, dadosBase, { criadoEm: firebase.firestore.FieldValue.serverTimestamp() }));
-            toast("Endereçamento cadastrado!");
+    let salvoFirebase = false;
+    let novoId = id || ("loc_" + Date.now());
+    
+    if (enderecamentosRef) {
+        try {
+            if (id && !id.startsWith("loc_")) {
+                await enderecamentosRef.doc(id).update(Object.assign({}, dadosBase, { criadoEm: firebase.firestore.FieldValue.serverTimestamp() }));
+            } else {
+                const docRef = await enderecamentosRef.add(Object.assign({}, dadosBase, { criadoEm: firebase.firestore.FieldValue.serverTimestamp() }));
+                novoId = docRef.id;
+            }
+            salvoFirebase = true;
+        } catch(e) {
+            console.warn("Não foi possível salvar no Firebase, gravando na memória local:", e);
         }
-        irPara("enderecos");
-    } catch(e) {
-        console.error("Erro ao salvar endereçamento:", e);
-        toast("Erro ao salvar.", "error");
     }
+    
+    // Atualiza cache local
+    let locais = lsGet(LS_ENDERECOS, []);
+    if (!Array.isArray(locais)) locais = [];
+    if (id) {
+        locais = locais.map(x => x.id === id ? Object.assign({ id: novoId }, dadosBase) : x);
+    } else {
+        locais.unshift(Object.assign({ id: novoId }, dadosBase));
+    }
+    lsSet(LS_ENDERECOS, locais);
+    todosEnderecamentos = locais;
+    
+    toast(salvoFirebase ? "Endereçamento salvo com sucesso!" : "Endereçamento salvo no dispositivo!");
+    renderEnderecamentos();
+    irPara("enderecos");
 }
 
 async function carregarEnderecamentos() {
     const el = document.getElementById("resultados_enderecos");
-    if (el) el.innerHTML = '<div class="empty"><i class="fas fa-spinner fa-spin"></i><p>Carregando endereçamentos...</p></div>';
+    if (el && todosEnderecamentos.length === 0) {
+        el.innerHTML = '<div class="empty"><i class="fas fa-spinner fa-spin"></i><p>Carregando endereçamentos...</p></div>';
+    }
     
-    try {
-        const snap = await enderecamentosRef.get();
-        todosEnderecamentos = snap.docs
-            .filter(doc => doc.id !== "config_pronomes")
-            .map(doc => {
-                const d = doc.data();
-                return Object.assign({ id: doc.id }, d, { criadoEm: d.criadoEm ? d.criadoEm.toMillis() : 0 });
-            });
-        todosEnderecamentos.sort((a,b) => b.criadoEm - a.criadoEm);
+    // 1. Carrega do cache local primeiro para exibição imediata
+    const locais = lsGet(LS_ENDERECOS, []);
+    if (Array.isArray(locais) && locais.length > 0 && todosEnderecamentos.length === 0) {
+        todosEnderecamentos = locais;
         renderEnderecamentos();
-    } catch(e) {
-        console.error("Erro ao carregar endereçamentos:", e);
-        if (el) el.innerHTML = '<div class="empty"><i class="fas fa-circle-exclamation" style="color:var(--danger);"></i><p>Erro de conexão com o banco de dados.</p></div>';
+    }
+    
+    // 2. Busca do Firestore se disponível
+    if (enderecamentosRef) {
+        try {
+            const snap = await enderecamentosRef.get();
+            const doBanco = snap.docs
+                .filter(doc => doc.id !== "config_pronomes")
+                .map(doc => {
+                    const d = doc.data();
+                    let criadoEm = 0;
+                    if (d.criadoEm) {
+                        if (typeof d.criadoEm.toMillis === "function") criadoEm = d.criadoEm.toMillis();
+                        else if (typeof d.criadoEm === "number") criadoEm = d.criadoEm;
+                        else if (d.criadoEm.seconds) criadoEm = d.criadoEm.seconds * 1000;
+                        else if (typeof d.criadoEm === "string") criadoEm = new Date(d.criadoEm).getTime() || 0;
+                    }
+                    return Object.assign({ id: doc.id }, d, { criadoEm });
+                });
+            
+            // Mescla Firestore com locais
+            const mapa = new Map();
+            doBanco.forEach(item => mapa.set(item.id, item));
+            (Array.isArray(locais) ? locais : []).forEach(item => {
+                if (item.id && item.id.startsWith("loc_") && !mapa.has(item.id)) {
+                    mapa.set(item.id, item);
+                }
+            });
+            
+            todosEnderecamentos = Array.from(mapa.values());
+            todosEnderecamentos.sort((a,b) => (b.criadoEm || 0) - (a.criadoEm || 0));
+            lsSet(LS_ENDERECOS, todosEnderecamentos);
+            renderEnderecamentos();
+        } catch(e) {
+            console.error("Erro ao buscar endereçamentos no Firebase, usando locais:", e);
+            if (todosEnderecamentos.length === 0 && Array.isArray(locais) && locais.length > 0) {
+                todosEnderecamentos = locais;
+                renderEnderecamentos();
+            } else if (todosEnderecamentos.length === 0) {
+                if (el) el.innerHTML = '<div class="empty"><i class="fas fa-circle-exclamation" style="color:var(--danger);"></i><p>Erro de conexão com o banco de dados.</p></div>';
+            }
+        }
+    } else if (todosEnderecamentos.length === 0) {
+        renderEnderecamentos();
     }
 }
 
@@ -1780,16 +1839,32 @@ function renderEnderecamentos() {
     const el = document.getElementById("resultados_enderecos");
     if (!el) return;
     
-    const busca = (document.getElementById("busca-enderecos")?.value || "").toLowerCase();
+    const busca = (document.getElementById("busca-enderecos")?.value || "").toLowerCase().trim();
     let lista = [...todosEnderecamentos];
     
     if (busca) {
-        lista = lista.filter(e => 
-            (e.orgao && e.orgao.toLowerCase().includes(busca)) || 
-            (e.destinatario && e.destinatario.toLowerCase().includes(busca)) ||
-            (e.cargo && e.cargo.toLowerCase().includes(busca)) ||
-            (e.vocativo && e.vocativo.toLowerCase().includes(busca))
-        );
+        const palavras = busca.split(/\s+/).filter(Boolean);
+        lista = lista.filter(e => {
+            const orgao = (e.orgao || "").toLowerCase();
+            const dest = (e.destinatario || "").toLowerCase();
+            const cargo = (e.cargo || "").toLowerCase();
+            const vocativo = (e.vocativo || "").toLowerCase();
+            const tratamento = (e.tratamento || "").toLowerCase();
+            const localidade = (e.localidade || "").toLowerCase();
+            const texto = (e.textoGerado || "").toLowerCase();
+            const obs = (e.obs || "").toLowerCase();
+            
+            return palavras.every(p => 
+                orgao.includes(p) ||
+                dest.includes(p) ||
+                cargo.includes(p) ||
+                vocativo.includes(p) ||
+                tratamento.includes(p) ||
+                localidade.includes(p) ||
+                texto.includes(p) ||
+                obs.includes(p)
+            );
+        });
     }
     
     if (filtroEnderecosAtual !== "todos") {
@@ -1823,7 +1898,7 @@ function renderEnderecamentos() {
                 '<div class="card-cat"><i class="fas fa-map-location-dot"></i> ' + badgeTipo + '</div>' +
             '</div>' +
             '<h3 class="card-titulo" style="margin-bottom: 4px;">' + sanitize(e.orgao) + '</h3>' +
-            (e.tipoDoc !== "circular" ? '<p style="font-size: 0.85rem; color: var(--ink-muted); margin-bottom: 6px;">' + sanitize(destinatarioLabel) + '</p>' : "") +
+            (e.tipoDoc !== "circular" ? '<p style="font-size: 0.85rem; color: var(--ink-muted); margin-bottom: 6px;">' + sanitize(destinatarioLabel) + (e.cargo ? ' &bull; ' + sanitize(e.cargo) : '') + '</p>' : "") +
             '<div class="card-assunto-texto" style="font-family: monospace; font-size: 0.85rem; line-height: 1.4; max-height: 120px; overflow-y: auto; white-space: pre-wrap; margin-bottom: 12px; font-style: normal; background: var(--sand-200); padding: 12px; border-radius: var(--r-sm); border-left: 3px solid var(--accent); color: var(--ink);">' + sanitize(e.textoGerado) + '</div>' +
             '<div class="card-acoes" style="display:flex; justify-content:space-between; width:100%;">' +
                 '<div style="display:flex; gap:8px;">' +
@@ -1831,8 +1906,8 @@ function renderEnderecamentos() {
                     '<button type="button" class="btn btn-outline btn-sm" onclick="verEnderecamento(\'' + e.id + '\')"><i class="fas fa-eye"></i> Detalhes</button>' +
                 '</div>' +
                 '<div class="admin-only" style="display:flex; gap:8px;">' +
-                    '<button type="button" class="btn btn-outline btn-sm" onclick="editarEnderecamento(\'' + e.id + '\')" style="color:var(--accent);"><i class="fas fa-pen"></i></button>' +
-                    '<button type="button" class="btn btn-outline btn-sm" onclick="confirmarExcluirEndereco(\'' + e.id + '\', \'' + e.orgao.replace(/'/g, "\\'") + '\')" style="color:var(--danger); border-color:rgba(179,48,48,0.3);"><i class="fas fa-trash"></i></button>' +
+                    '<button type="button" class="btn btn-outline btn-sm" onclick="editarEnderecamento(\'' + e.id + '\')" style="color:var(--accent);" title="Editar"><i class="fas fa-pen"></i></button>' +
+                    '<button type="button" class="btn btn-outline btn-sm" onclick="confirmarExcluirEndereco(\'' + e.id + '\', \'' + (e.orgao || "").replace(/'/g, "\\'") + '\')" style="color:var(--danger); border-color:rgba(179,48,48,0.3);" title="Excluir"><i class="fas fa-trash"></i></button>' +
                 '</div>' +
             '</div>' +
         '</div>';
@@ -1891,6 +1966,9 @@ function verEnderecamento(id) {
             <div><strong>Órgão / Instituição:</strong><div style="color:var(--ink-muted); margin-top:2px;">${sanitize(e.orgao)}</div></div>
             <div><strong>Tipo de Documento:</strong><div style="color:var(--ink-muted); margin-top:2px;">${labelTipo}</div></div>
             ${e.vocativo ? `<div><strong>Vocativo:</strong><div style="color:var(--ink-muted); margin-top:2px;">${sanitize(e.vocativo)}</div></div>` : ""}
+            ${e.destinatario ? `<div><strong>Destinatário:</strong><div style="color:var(--ink-muted); margin-top:2px;">${sanitize(e.destinatario)}</div></div>` : ""}
+            ${e.cargo ? `<div><strong>Cargo / Função:</strong><div style="color:var(--ink-muted); margin-top:2px;">${sanitize(e.cargo)}</div></div>` : ""}
+            ${e.localidade ? `<div><strong>Localidade:</strong><div style="color:var(--ink-muted); margin-top:2px;">${sanitize(e.localidade)}</div></div>` : ""}
         </div>
         <div style="margin-top:8px;">
             <strong>Bloco de Endereçamento Oficial:</strong>
@@ -1933,7 +2011,7 @@ function editarEnderecamento(id) {
     if (!e) return;
     
     document.getElementById("e-id").value = id;
-    document.getElementById("e-tipo-doc").value = e.tipoDoc;
+    document.getElementById("e-tipo-doc").value = e.tipoDoc || "oficio";
     document.getElementById("e-tratamento").value = e.tratamento || "";
     document.getElementById("e-vocativo").value = e.vocativo || "";
     document.getElementById("e-destinatario").value = e.destinatario || "";
@@ -1961,12 +2039,23 @@ function editarEnderecamento(id) {
 async function confirmarExcluirEndereco(id, orgao) {
     if (!confirm('Deseja excluir permanentemente o endereçamento de "' + orgao + '"?')) return;
     try {
-        await enderecamentosRef.doc(id).delete();
+        if (enderecamentosRef && id && !id.startsWith("loc_")) {
+            await enderecamentosRef.doc(id).delete();
+        }
+        let locais = lsGet(LS_ENDERECOS, []);
+        locais = locais.filter(x => x.id !== id);
+        lsSet(LS_ENDERECOS, locais);
+        todosEnderecamentos = todosEnderecamentos.filter(x => x.id !== id);
         toast("Endereçamento removido.");
-        await carregarEnderecamentos();
+        renderEnderecamentos();
     } catch (error) {
         console.error("Erro ao remover:", error);
-        toast("Erro ao remover.", "error");
+        let locais = lsGet(LS_ENDERECOS, []);
+        locais = locais.filter(x => x.id !== id);
+        lsSet(LS_ENDERECOS, locais);
+        todosEnderecamentos = todosEnderecamentos.filter(x => x.id !== id);
+        renderEnderecamentos();
+        toast("Endereçamento removido.");
     }
 }
 
@@ -1985,6 +2074,9 @@ async function adicionarNovoPronome() {
         toast("Pronome de tratamento cadastrado!");
         document.getElementById("e-novo-pronome-val").value = "";
         await carregarPronomes();
+        if (document.getElementById("modal-gerenciar-pronomes-vocativos")?.style.display === "flex") {
+            filtrarModalPV();
+        }
     } catch(e) {
         console.error("Erro ao cadastrar pronome:", e);
         toast("Erro ao cadastrar pronome.", "error");
@@ -2006,6 +2098,9 @@ async function adicionarNovoVocativo() {
         toast("Vocativo cadastrado!");
         document.getElementById("e-novo-vocativo-val").value = "";
         await carregarPronomes();
+        if (document.getElementById("modal-gerenciar-pronomes-vocativos")?.style.display === "flex") {
+            filtrarModalPV();
+        }
     } catch(e) {
         console.error("Erro ao cadastrar vocativo:", e);
         toast("Erro ao cadastrar vocativo.", "error");
@@ -2053,4 +2148,159 @@ async function carregarPronomes() {
     } catch(e) {
         console.error("Erro ao carregar pronomes e vocativos:", e);
     }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  MÓDULO: MODAL CONSULTA / GESTÃO DE VOCATIVOS E PRONOMES
+// ═══════════════════════════════════════════════════════════════
+let abaPVAtual = 'todos';
+
+function abrirModalPronomesVocativos(aba) {
+    abaPVAtual = aba || 'todos';
+    const modal = document.getElementById("modal-gerenciar-pronomes-vocativos");
+    if (!modal) return;
+    
+    document.getElementById("busca-modal-pv").value = "";
+    alternarTabPV(abaPVAtual);
+    modal.style.display = "flex";
+    setTimeout(() => document.getElementById("busca-modal-pv")?.focus(), 100);
+}
+
+function fecharModalPronomesVocativos() {
+    const modal = document.getElementById("modal-gerenciar-pronomes-vocativos");
+    if (modal) modal.style.display = "none";
+}
+
+function alternarTabPV(aba) {
+    abaPVAtual = aba;
+    ["todos", "pronomes", "vocativos"].forEach(a => {
+        const btn = document.getElementById("tab-pv-" + a);
+        if (btn) btn.classList.toggle("ativo", a === aba);
+    });
+    filtrarModalPV();
+}
+
+function filtrarModalPV() {
+    const cont = document.getElementById("lista-modal-pv-itens");
+    const countEl = document.getElementById("contagem-modal-pv");
+    if (!cont) return;
+    
+    const busca = (document.getElementById("busca-modal-pv")?.value || "").toLowerCase().trim();
+    const customP = lsGet(LS_PRONOMES, []);
+    const customV = lsGet(LS_VOCATIVOS, []);
+    
+    const padroesP = [
+        "A Sua Excelência o Senhor",
+        "A Sua Senhoria o Senhor",
+        "Ao Senhor",
+        "Excelentíssimo Senhor Juiz"
+    ];
+    
+    const padroesV = [
+        "Excelentíssimo Senhor Juiz,",
+        "Senhor Coordenador,",
+        "Senhor Comandante-Geral,",
+        "Senhora Candidata,",
+        "Prezada Senhora,",
+        "Prezado Senhor,"
+    ];
+    
+    let itens = [];
+    
+    if (abaPVAtual === "todos" || abaPVAtual === "pronomes") {
+        padroesP.forEach(txt => itens.push({ tipo: "pronome", texto: txt, custom: false }));
+        customP.forEach(txt => {
+            if (!padroesP.includes(txt)) itens.push({ tipo: "pronome", texto: txt, custom: true });
+        });
+    }
+    
+    if (abaPVAtual === "todos" || abaPVAtual === "vocativos") {
+        padroesV.forEach(txt => itens.push({ tipo: "vocativo", texto: txt, custom: false }));
+        customV.forEach(txt => {
+            if (!padroesV.includes(txt)) itens.push({ tipo: "vocativo", texto: txt, custom: true });
+        });
+    }
+    
+    if (busca) {
+        itens = itens.filter(i => i.texto.toLowerCase().includes(busca));
+    }
+    
+    if (countEl) {
+        countEl.textContent = `${itens.length} ite${itens.length === 1 ? 'm' : 'ns'} cadastrado${itens.length === 1 ? '' : 's'}`;
+    }
+    
+    if (itens.length === 0) {
+        cont.innerHTML = '<div style="text-align:center; padding:24px; color:var(--ink-muted); font-size:0.88rem;"><i class="fas fa-magnifying-glass" style="margin-right:6px;"></i>Nenhum item encontrado.</div>';
+        return;
+    }
+    
+    cont.innerHTML = itens.map(i => {
+        const badgeLabel = i.tipo === "pronome" ? "Endereçamento" : "Vocativo";
+        const badgeColor = i.tipo === "pronome" ? "var(--green-800)" : "var(--accent)";
+        const tipoBadge = `<span style="font-size:0.7rem; font-weight:700; text-transform:uppercase; background:${badgeColor}; color:#fff; padding:2px 8px; border-radius:12px; letter-spacing:0.4px;">${badgeLabel}</span>`;
+        const customBadge = i.custom 
+            ? `<span style="font-size:0.68rem; color:var(--ink-muted); background:var(--sand-300); padding:2px 6px; border-radius:4px; margin-left:4px;">Personalizado</span>` 
+            : `<span style="font-size:0.68rem; color:var(--ink-muted); background:var(--sand-200); padding:2px 6px; border-radius:4px; margin-left:4px;">Padrão</span>`;
+        
+        const textoEscapado = escapeParamQuotes(i.texto);
+        
+        return `
+            <div style="display:flex; justify-content:space-between; align-items:center; background:var(--sand-200); padding:10px 14px; border-radius:var(--r-sm); border:1px solid var(--border); gap:8px;">
+                <div style="display:flex; flex-direction:column; gap:4px; flex:1; min-width:0;">
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        ${tipoBadge}
+                        ${customBadge}
+                    </div>
+                    <div style="font-size:0.92rem; font-weight:600; color:var(--ink); word-break:break-word;">${sanitize(i.texto)}</div>
+                </div>
+                <div style="display:flex; gap:6px; flex-shrink:0;">
+                    <button type="button" class="btn btn-outline btn-sm" onclick="copiarItemPV('${textoEscapado}')" title="Copiar texto" style="padding:6px 10px; font-size:0.8rem;"><i class="fas fa-copy"></i> Copiar</button>
+                    ${i.custom ? `<button type="button" class="btn btn-outline btn-sm" onclick="removerItemPV('${i.tipo}', '${textoEscapado}')" title="Excluir personalizado" style="color:var(--danger); border-color:rgba(179,48,48,0.3); padding:6px 10px; font-size:0.8rem;"><i class="fas fa-trash"></i></button>` : ''}
+                </div>
+            </div>
+        `;
+    }).join("");
+}
+
+function escapeParamQuotes(str) {
+    return (str || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, "&quot;");
+}
+
+function copiarItemPV(texto) {
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(texto).then(() => toast(`"${texto}" copiado!`)).catch(() => fallbackCopiarItemPV(texto));
+    } else {
+        fallbackCopiarItemPV(texto);
+    }
+}
+
+function fallbackCopiarItemPV(texto) {
+    const ta = document.createElement("textarea");
+    ta.style.position = "fixed"; ta.style.opacity = "0";
+    ta.value = texto; document.body.appendChild(ta); ta.select();
+    try {
+        document.execCommand("copy");
+        toast(`"${texto}" copiado!`);
+    } catch {
+        toast("Erro ao copiar.", "error");
+    }
+    document.body.removeChild(ta);
+}
+
+async function removerItemPV(tipo, texto) {
+    if (!confirm(`Deseja remover "${texto}" da sua lista de ${tipo === 'pronome' ? 'endereçamentos' : 'vocativos'}?`)) return;
+    
+    if (tipo === "pronome") {
+        let customP = lsGet(LS_PRONOMES, []);
+        customP = customP.filter(x => x !== texto);
+        lsSet(LS_PRONOMES, customP);
+    } else {
+        let customV = lsGet(LS_VOCATIVOS, []);
+        customV = customV.filter(x => x !== texto);
+        lsSet(LS_VOCATIVOS, customV);
+    }
+    
+    toast("Item removido com sucesso!");
+    await carregarPronomes();
+    filtrarModalPV();
 }
