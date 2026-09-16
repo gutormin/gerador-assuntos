@@ -1232,12 +1232,12 @@ textarea {
                 <div class="form-card-body" style="padding: 24px;">
                     <input type="hidden" id="e-id">
                     
-                    <!-- Seção 1: Tipo & Tratamento -->
+                    <!-- Seção 1: Tipo de Documento -->
                     <h3 style="font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.7px; color:var(--accent); margin-bottom:16px; border-bottom:1px solid var(--border); padding-bottom:8px;">
-                        <i class="fas fa-sliders" style="margin-right:6px;"></i> Parâmetros de Tipo, Endereçamento e Vocativo
+                        <i class="fas fa-sliders" style="margin-right:6px;"></i> Parâmetros do Documento
                     </h3>
                     
-                    <div class="form-row cols-2" style="margin-bottom:16px; display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+                    <div class="form-row cols-1" style="margin-bottom:20px;">
                         <div class="form-group">
                             <label for="e-tipo-doc">Tipo de Documento <span class="obrig">*</span></label>
                             <select id="e-tipo-doc" onchange="atualizarCamposEPreview()" style="width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:var(--r-sm); font-family:inherit; font-size:0.88rem; outline:none; background:#fff;">
@@ -1245,21 +1245,6 @@ textarea {
                                 <option value="email">E-mail</option>
                                 <option value="circular">Ofício Circular</option>
                             </select>
-                        </div>
-                        <div class="form-group" id="group-e-tratamento">
-                            <label for="e-tratamento">Pronome (Endereçamento) <span class="obrig">*</span></label>
-                            <input type="text" id="e-tratamento" placeholder="Ex: À Senhora, A Sua Excelência o Senhor" list="pronomes-lista" oninput="calcularEnderecoPreview()" style="width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:var(--r-sm); font-family:inherit; font-size:0.88rem; outline:none;">
-                            <datalist id="pronomes-lista"></datalist>
-                            <span class="field-err" id="err-e-tratamento" style="color:var(--danger); font-size:0.75rem; display:block; margin-top:2px;"></span>
-                        </div>
-                    </div>
-
-                    <div class="form-row cols-1" id="row-e-vocativo" style="margin-bottom:16px; display:grid; grid-template-columns: 1fr; gap:12px;">
-                        <div class="form-group" id="group-e-vocativo">
-                            <label for="e-vocativo">Vocativo <span class="obrig">*</span></label>
-                            <input type="text" id="e-vocativo" placeholder="Ex: Senhora Candidata,, Excelentíssimo Senhor Juiz," list="vocativos-lista" oninput="calcularEnderecoPreview()" style="width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:var(--r-sm); font-family:inherit; font-size:0.88rem; outline:none;">
-                            <datalist id="vocativos-lista"></datalist>
-                            <span class="field-err" id="err-e-vocativo" style="color:var(--danger); font-size:0.75rem; display:block; margin-top:2px;"></span>
                         </div>
                     </div>
 
@@ -1285,40 +1270,21 @@ textarea {
                                 <button type="button" class="btn btn-outline btn-sm" onclick="adicionarNovoVocativo()" style="padding:0 12px; font-size:0.8rem;" title="Adicionar novo"><i class="fas fa-plus"></i></button>
                             </div>
                         </div>
+                        <datalist id="pronomes-lista"></datalist>
+                        <datalist id="vocativos-lista"></datalist>
                     </div>
 
-                    <!-- Seção 2: Destinatário / Órgão -->
+                    <!-- Seção 2: Cargo / Função -->
                     <h3 style="font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.7px; color:var(--accent); margin-bottom:16px; border-bottom:1px solid var(--border); padding-bottom:8px;">
-                        <i class="fas fa-file-signature" style="margin-right:6px;"></i> Dados da Autoridade / Órgão
+                        <i class="fas fa-file-signature" style="margin-right:6px;"></i> Cargo / Função
                     </h3>
 
-                    <div class="form-row cols-2" style="margin-bottom:16px; display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
-                        <div class="form-group" id="group-e-destinatario">
-                            <label for="e-destinatario" id="label-e-destinatario">Autoridade Destinatária <span class="obrig">*</span></label>
-                            <input type="text" id="e-destinatario" placeholder="Ex: Doutor EDUARDO PEREZ OLIVEIRA" oninput="calcularEnderecoPreview()" style="width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:var(--r-sm); font-family:inherit; font-size:0.88rem; outline:none;">
-                            <span class="field-err" id="err-e-destinatario" style="color:var(--danger); font-size:0.75rem; display:block; margin-top:2px;"></span>
-                        </div>
+                    <div class="form-row cols-1" style="margin-bottom:24px;">
                         <div class="form-group" id="group-e-cargo">
-                            <label for="e-cargo">Cargo / Função <span class="obrig">*</span></label>
+                            <label for="e-cargo" id="label-e-cargo">Cargo / Função <span class="obrig">*</span></label>
                             <input type="text" id="e-cargo" placeholder="Ex: Juiz de Direito e Coordenador do NATJUS" oninput="calcularEnderecoPreview()" style="width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:var(--r-sm); font-family:inherit; font-size:0.88rem; outline:none;">
+                            <span class="field-hint" style="color:var(--ink-muted); font-size:0.75rem; margin-top:4px; display:block;"><i class="fas fa-info-circle"></i> Identificação do destinatário para o endereçamento</span>
                             <span class="field-err" id="err-e-cargo" style="color:var(--danger); font-size:0.75rem; display:block; margin-top:2px;"></span>
-                        </div>
-                    </div>
-
-                    <div class="form-row cols-2" style="margin-bottom:24px; display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
-                        <div class="form-group">
-                            <label for="e-orgao">Instituição / Órgão <span class="obrig">*</span></label>
-                            <input type="text" id="e-orgao" placeholder="Ex: Tribunal de Justiça do Estado de Goiás" oninput="calcularEnderecoPreview()" style="width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:var(--r-sm); font-family:inherit; font-size:0.88rem; outline:none;">
-                            <span class="field-err" id="err-e-orgao" style="color:var(--danger); font-size:0.75rem; display:block; margin-top:2px;"></span>
-                        </div>
-                        <div class="form-group">
-                            <label for="e-localidade">Localidade <span class="obrig">*</span></label>
-                            <input type="text" id="e-localidade" placeholder="Ex: N E S T A ou Goiânia - GO" list="localidades-lista" oninput="calcularEnderecoPreview()" style="width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:var(--r-sm); font-family:inherit; font-size:0.88rem; outline:none;">
-                            <datalist id="localidades-lista">
-                                <option value="N E S T A"></option>
-                                <option value="Goiânia – GO"></option>
-                            </datalist>
-                            <span class="field-err" id="err-e-localidade" style="color:var(--danger); font-size:0.75rem; display:block; margin-top:2px;"></span>
                         </div>
                     </div>
 

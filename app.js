@@ -1594,71 +1594,31 @@ async function varreduraCompletaDados() {
 // ═══════════════════════════════════════════════════════════
 
 function calcularEnderecoPreview() {
-    const tipo = document.getElementById("e-tipo-doc").value;
-    const tratamento = document.getElementById("e-tratamento").value.trim();
-    const destinatario = document.getElementById("e-destinatario").value.trim();
-    const cargo = document.getElementById("e-cargo").value.trim();
-    const orgao = document.getElementById("e-orgao").value.trim();
-    const localidade = document.getElementById("e-localidade").value.trim();
-    const vocativo = document.getElementById("e-vocativo").value.trim();
+    const cargo = document.getElementById("e-cargo") ? document.getElementById("e-cargo").value.trim() : "";
     
     let result = "";
-    if (tipo === "oficio") {
-        if (tratamento) result += tratamento + "\n";
-        if (destinatario) result += destinatario + "\n";
-        if (cargo) result += cargo + "\n";
-        if (orgao) result += orgao + "\n";
-        if (localidade) result += localidade;
-        if (vocativo) result += "\n\n" + vocativo;
-    } else if (tipo === "circular") {
-        if (tratamento) result += tratamento + "\n";
-        if (cargo) result += cargo + "\n";
-        if (orgao) result += orgao + "\n";
-        if (localidade) result += localidade;
-        if (vocativo) result += "\n\n" + vocativo;
-    } else {
-        if (vocativo) {
-            result += vocativo + "\n\n";
-        } else {
-            if (destinatario) result += "Prezado(a) " + destinatario + ",\n\n";
-        }
-        if (cargo) result += cargo + "\n";
-        if (orgao) result += orgao + "\n";
+    if (cargo) {
+        result = cargo;
     }
     
-    document.getElementById("endereco-preview-box").innerText = result || "Preencha os campos para visualizar...";
+    const previewEl = document.getElementById("endereco-preview-box");
+    if (previewEl) previewEl.innerText = result || "Preencha os campos para visualizar...";
     return result;
 }
 
 function atualizarCamposEPreview() {
-    const tipo = document.getElementById("e-tipo-doc").value;
-    const groupTratamento = document.getElementById("group-e-tratamento");
-    const rowVocativo = document.getElementById("row-e-vocativo");
-    const groupDestinatario = document.getElementById("group-e-destinatario");
-    const labelDestinatario = document.getElementById("label-e-destinatario");
-    const inputDestinatario = document.getElementById("e-destinatario");
-    const groupCargo = document.getElementById("group-e-cargo");
-    const labelCargo = groupCargo.querySelector("label");
+    const tipo = document.getElementById("e-tipo-doc") ? document.getElementById("e-tipo-doc").value : "oficio";
+    const labelCargo = document.getElementById("label-e-cargo");
     const inputCargo = document.getElementById("e-cargo");
     
-    groupTratamento.style.display = "block";
-    rowVocativo.style.display = "grid";
-    groupDestinatario.style.display = "block";
-    groupCargo.style.display = "block";
-    labelDestinatario.innerHTML = 'Autoridade Destinatária <span class="obrig">*</span>';
-    inputDestinatario.placeholder = 'Ex: Doutor EDUARDO PEREZ OLIVEIRA';
-    labelCargo.innerHTML = 'Cargo / Função <span class="obrig">*</span>';
-    inputCargo.placeholder = 'Ex: Juiz de Direito e Coordenador do NATJUS';
-    
-    if (tipo === "circular") {
-        groupDestinatario.style.display = "none";
-        labelCargo.innerHTML = 'Destinatários Coletivos <span class="obrig">*</span>';
-        inputCargo.placeholder = 'Ex: Senhores Magistrados, Diretores de Foro e Chefes de Secretaria';
-    } else if (tipo === "email") {
-        groupTratamento.style.display = "none";
-        labelDestinatario.innerHTML = 'Nome do Destinatário <span class="obrig">*</span>';
-        inputDestinatario.placeholder = 'Ex: Eduardo Perez Oliveira';
-        labelCargo.innerHTML = 'Cargo / Função';
+    if (labelCargo && inputCargo) {
+        if (tipo === "circular") {
+            labelCargo.innerHTML = 'Destinatários Coletivos <span class="obrig">*</span>';
+            inputCargo.placeholder = 'Ex: Senhores Magistrados, Diretores de Foro e Chefes de Secretaria';
+        } else {
+            labelCargo.innerHTML = 'Cargo / Função <span class="obrig">*</span>';
+            inputCargo.placeholder = 'Ex: Juiz de Direito e Coordenador do NATJUS';
+        }
     }
     
     calcularEnderecoPreview();
@@ -1686,12 +1646,7 @@ function copiarPreviewEndereco() {
 function novoEnderecamento() {
     document.getElementById("e-id").value = "";
     document.getElementById("e-tipo-doc").value = "oficio";
-    document.getElementById("e-tratamento").value = "A Sua Excelência o Senhor";
-    document.getElementById("e-vocativo").value = "";
-    document.getElementById("e-destinatario").value = "";
     document.getElementById("e-cargo").value = "";
-    document.getElementById("e-orgao").value = "Tribunal de Justiça do Estado de Goiás";
-    document.getElementById("e-localidade").value = "N E S T A";
     document.getElementById("e-obs").value = "";
     document.getElementById("e-novo-pronome-val").value = "";
     document.getElementById("e-novo-vocativo-val").value = "";
@@ -1699,12 +1654,8 @@ function novoEnderecamento() {
     document.getElementById("cad-end-titulo").textContent = "Novo Endereçamento";
     document.getElementById("cad-end-sub").textContent = "Configure os dados para a geração automática do bloco formal";
     
-    document.getElementById("err-e-tratamento").textContent = "";
-    document.getElementById("err-e-vocativo").textContent = "";
-    document.getElementById("err-e-destinatario").textContent = "";
-    document.getElementById("err-e-cargo").textContent = "";
-    document.getElementById("err-e-orgao").textContent = "";
-    document.getElementById("err-e-localidade").textContent = "";
+    const errCargo = document.getElementById("err-e-cargo");
+    if (errCargo) errCargo.textContent = "";
     
     atualizarCamposEPreview();
     irPara("cadastro-endereco");
@@ -1713,35 +1664,23 @@ function novoEnderecamento() {
 async function salvarEnderecamento() {
     const id = document.getElementById("e-id").value;
     const tipoDoc = document.getElementById("e-tipo-doc").value;
-    const tratamento = tipoDoc === "email" ? "" : document.getElementById("e-tratamento").value.trim();
-    const vocativo = document.getElementById("e-vocativo").value.trim();
-    const destinatario = tipoDoc === "circular" ? "" : document.getElementById("e-destinatario").value.trim();
     const cargo = document.getElementById("e-cargo").value.trim();
-    const orgao = document.getElementById("e-orgao").value.trim();
-    const localidade = document.getElementById("e-localidade").value.trim();
     const obs = document.getElementById("e-obs").value.trim();
     const textoGerado = calcularEnderecoPreview();
     
     let ok = true;
-    
-    if (tipoDoc !== "email") {
-        if (!tratamento) { document.getElementById("err-e-tratamento").textContent = "Campo obrigatório."; ok = false; } else document.getElementById("err-e-tratamento").textContent = "";
+    const errCargo = document.getElementById("err-e-cargo");
+    if (!cargo) {
+        if (errCargo) errCargo.textContent = "Campo obrigatório.";
+        ok = false;
+    } else {
+        if (errCargo) errCargo.textContent = "";
     }
-    
-    if (!vocativo) { document.getElementById("err-e-vocativo").textContent = "Campo obrigatório."; ok = false; } else document.getElementById("err-e-vocativo").textContent = "";
-    
-    if (tipoDoc !== "circular") {
-        if (!destinatario) { document.getElementById("err-e-destinatario").textContent = "Campo obrigatório."; ok = false; } else document.getElementById("err-e-destinatario").textContent = "";
-    }
-    
-    if (!cargo) { document.getElementById("err-e-cargo").textContent = "Campo obrigatório."; ok = false; } else document.getElementById("err-e-cargo").textContent = "";
-    if (!orgao) { document.getElementById("err-e-orgao").textContent = "Campo obrigatório."; ok = false; } else document.getElementById("err-e-orgao").textContent = "";
-    if (!localidade) { document.getElementById("err-e-localidade").textContent = "Campo obrigatório."; ok = false; } else document.getElementById("err-e-localidade").textContent = "";
     
     if (!ok) return;
     
     const dadosBase = {
-        tipoDoc, tratamento, vocativo, destinatario, cargo, orgao, localidade, obs, textoGerado, criadoEm: Date.now()
+        tipoDoc, cargo, obs, textoGerado, criadoEm: Date.now()
     };
     
     let salvoFirebase = false;
@@ -1891,15 +1830,16 @@ function renderEnderecamentos() {
         }
         
         const badgeTipo = '<span class="badge-tipo ' + classTipo + '"><i class="fas ' + icon + '"></i> ' + labelTipo + '</span>';
-        const destinatarioLabel = e.tipoDoc === "circular" ? "Circular Geral" : (e.destinatario || "-");
+        const tituloCard = e.cargo || e.orgao || "Endereçamento";
+        const subtituloCard = e.orgao && e.cargo ? sanitize(e.orgao) : (e.destinatario ? sanitize(e.destinatario) : "");
         
         return '<div class="card-assunto" style="border-color: var(--border); margin-bottom: 12px;">' +
             '<div class="card-top">' +
                 '<div class="card-cat"><i class="fas fa-map-location-dot"></i> ' + badgeTipo + '</div>' +
             '</div>' +
-            '<h3 class="card-titulo" style="margin-bottom: 4px;">' + sanitize(e.orgao) + '</h3>' +
-            (e.tipoDoc !== "circular" ? '<p style="font-size: 0.85rem; color: var(--ink-muted); margin-bottom: 6px;">' + sanitize(destinatarioLabel) + (e.cargo ? ' &bull; ' + sanitize(e.cargo) : '') + '</p>' : "") +
-            '<div class="card-assunto-texto" style="font-family: monospace; font-size: 0.85rem; line-height: 1.4; max-height: 120px; overflow-y: auto; white-space: pre-wrap; margin-bottom: 12px; font-style: normal; background: var(--sand-200); padding: 12px; border-radius: var(--r-sm); border-left: 3px solid var(--accent); color: var(--ink);">' + sanitize(e.textoGerado) + '</div>' +
+            '<h3 class="card-titulo" style="margin-bottom: 4px;">' + sanitize(tituloCard) + '</h3>' +
+            (subtituloCard ? '<p style="font-size: 0.85rem; color: var(--ink-muted); margin-bottom: 6px;">' + subtituloCard + '</p>' : "") +
+            '<div class="card-assunto-texto" style="font-family: monospace; font-size: 0.85rem; line-height: 1.4; max-height: 120px; overflow-y: auto; white-space: pre-wrap; margin-bottom: 12px; font-style: normal; background: var(--sand-200); padding: 12px; border-radius: var(--r-sm); border-left: 3px solid var(--accent); color: var(--ink);">' + sanitize(e.textoGerado || e.cargo || "") + '</div>' +
             '<div class="card-acoes" style="display:flex; justify-content:space-between; width:100%;">' +
                 '<div style="display:flex; gap:8px;">' +
                     '<button type="button" class="btn btn-primary btn-sm" onclick="copiarTextoEndereco(this, \'' + e.id + '\')"><i class="fas fa-copy"></i> Copiar Bloco</button>' +
@@ -1907,7 +1847,7 @@ function renderEnderecamentos() {
                 '</div>' +
                 '<div class="admin-only" style="display:flex; gap:8px;">' +
                     '<button type="button" class="btn btn-outline btn-sm" onclick="editarEnderecamento(\'' + e.id + '\')" style="color:var(--accent);" title="Editar"><i class="fas fa-pen"></i></button>' +
-                    '<button type="button" class="btn btn-outline btn-sm" onclick="confirmarExcluirEndereco(\'' + e.id + '\', \'' + (e.orgao || "").replace(/'/g, "\\'") + '\')" style="color:var(--danger); border-color:rgba(179,48,48,0.3);" title="Excluir"><i class="fas fa-trash"></i></button>' +
+                    '<button type="button" class="btn btn-outline btn-sm" onclick="confirmarExcluirEndereco(\'' + e.id + '\', \'' + (tituloCard).replace(/'/g, "\\'") + '\')" style="color:var(--danger); border-color:rgba(179,48,48,0.3);" title="Excluir"><i class="fas fa-trash"></i></button>' +
                 '</div>' +
             '</div>' +
         '</div>';
@@ -1963,16 +1903,16 @@ function verEnderecamento(id) {
     
     document.getElementById("modal-ver-endereco-body").innerHTML = `
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; font-size:0.88rem;">
-            <div><strong>Órgão / Instituição:</strong><div style="color:var(--ink-muted); margin-top:2px;">${sanitize(e.orgao)}</div></div>
             <div><strong>Tipo de Documento:</strong><div style="color:var(--ink-muted); margin-top:2px;">${labelTipo}</div></div>
+            ${e.cargo ? `<div><strong>Cargo / Função:</strong><div style="color:var(--ink-muted); margin-top:2px;">${sanitize(e.cargo)}</div></div>` : ""}
+            ${e.orgao ? `<div><strong>Órgão / Instituição:</strong><div style="color:var(--ink-muted); margin-top:2px;">${sanitize(e.orgao)}</div></div>` : ""}
             ${e.vocativo ? `<div><strong>Vocativo:</strong><div style="color:var(--ink-muted); margin-top:2px;">${sanitize(e.vocativo)}</div></div>` : ""}
             ${e.destinatario ? `<div><strong>Destinatário:</strong><div style="color:var(--ink-muted); margin-top:2px;">${sanitize(e.destinatario)}</div></div>` : ""}
-            ${e.cargo ? `<div><strong>Cargo / Função:</strong><div style="color:var(--ink-muted); margin-top:2px;">${sanitize(e.cargo)}</div></div>` : ""}
             ${e.localidade ? `<div><strong>Localidade:</strong><div style="color:var(--ink-muted); margin-top:2px;">${sanitize(e.localidade)}</div></div>` : ""}
         </div>
         <div style="margin-top:8px;">
             <strong>Bloco de Endereçamento Oficial:</strong>
-            <div style="background:var(--sand-200); border-left:3px solid var(--accent); border-radius:0 var(--r-sm) var(--r-sm) 0; padding:12px; font-family:monospace; font-size:0.85rem; line-height:1.4; color:var(--ink); white-space:pre-wrap; max-height:160px; overflow-y:auto; margin-top:6px;">${sanitize(e.textoGerado)}</div>
+            <div style="background:var(--sand-200); border-left:3px solid var(--accent); border-radius:0 var(--r-sm) var(--r-sm) 0; padding:12px; font-family:monospace; font-size:0.85rem; line-height:1.4; color:var(--ink); white-space:pre-wrap; max-height:160px; overflow-y:auto; margin-top:6px;">${sanitize(e.textoGerado || e.cargo || "")}</div>
         </div>
         ${e.obs ? `<div style="margin-top:4px;"><strong>Observações:</strong><div style="background:var(--sand-200); padding:10px; border-radius:var(--r-sm); font-size:0.82rem; color:var(--ink-muted); margin-top:4px; font-style:italic;">${sanitize(e.obs)}</div></div>` : ""}
     `;
@@ -2012,12 +1952,7 @@ function editarEnderecamento(id) {
     
     document.getElementById("e-id").value = id;
     document.getElementById("e-tipo-doc").value = e.tipoDoc || "oficio";
-    document.getElementById("e-tratamento").value = e.tratamento || "";
-    document.getElementById("e-vocativo").value = e.vocativo || "";
-    document.getElementById("e-destinatario").value = e.destinatario || "";
     document.getElementById("e-cargo").value = e.cargo || "";
-    document.getElementById("e-orgao").value = e.orgao || "";
-    document.getElementById("e-localidade").value = e.localidade || "";
     document.getElementById("e-obs").value = e.obs || "";
     document.getElementById("e-novo-pronome-val").value = "";
     document.getElementById("e-novo-vocativo-val").value = "";
@@ -2025,12 +1960,8 @@ function editarEnderecamento(id) {
     document.getElementById("cad-end-titulo").textContent = "Editar Endereçamento";
     document.getElementById("cad-end-sub").textContent = "Altere os parâmetros do endereçamento";
     
-    document.getElementById("err-e-tratamento").textContent = "";
-    document.getElementById("err-e-vocativo").textContent = "";
-    document.getElementById("err-e-destinatario").textContent = "";
-    document.getElementById("err-e-cargo").textContent = "";
-    document.getElementById("err-e-orgao").textContent = "";
-    document.getElementById("err-e-localidade").textContent = "";
+    const errCargo = document.getElementById("err-e-cargo");
+    if (errCargo) errCargo.textContent = "";
     
     atualizarCamposEPreview();
     irPara("cadastro-endereco");
