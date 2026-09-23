@@ -524,7 +524,7 @@ function cardAssunto(a, palavras) {
     let htmlModelos = "";
     if (modelosSugeridos.length > 0) {
         htmlModelos = '<div class="modelos-sugeridos" style="margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border); display: flex; flex-direction: column; gap: 6px;">' +
-            '<span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: var(--ink-muted); display: flex; align-items: center; gap: 5px;"><i class="fas fa-file-invoice"></i> Modelos de Ofício sugeridos:</span>' +
+            '<span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: var(--green-800); display: flex; align-items: center; gap: 5px;"><i class="fas fa-file-invoice"></i> Modelos de Ofício vinculados (' + modelosSugeridos.length + '):</span>' +
             '<div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px;">' +
             modelosSugeridos.map(m => 
                 '<button type="button" class="btn btn-outline btn-sm btn-modelo-sug" data-modelo-sug-id="' + m.id + '" style="padding: 4px 10px; font-size: 0.75rem; min-height: 28px; display: inline-flex; align-items: center; gap: 5px;">' +
@@ -532,6 +532,10 @@ function cardAssunto(a, palavras) {
                 '</button>'
             ).join("") +
             '</div>' +
+            '</div>';
+    } else {
+        htmlModelos = '<div class="modelos-sugeridos" style="margin-top: 8px; font-size: 0.76rem; color: var(--ink-muted);">' +
+            '<i class="fas fa-file-invoice" style="opacity: 0.5;"></i> Nenhum modelo de ofício vinculado a este assunto.' +
             '</div>';
     }
 
@@ -544,9 +548,10 @@ function cardAssunto(a, palavras) {
         (tags ? '<div class="card-tags">' + tags + '</div>' : "") +
         '<div class="card-assunto-texto">' + preview + '</div>' +
         htmlModelos +
-        '<div class="card-acoes" style="margin-top: 14px;">' +
+        '<div class="card-acoes" style="margin-top: 14px; flex-wrap: wrap;">' +
             '<button class="btn btn-primary btn-copiar" data-copiar="' + a.id + '"><i class="fas fa-copy"></i> ' + (temXX ? "Preencher e copiar" : "Copiar assunto") + '</button>' +
-            '<button class="btn btn-ghost btn-icon admin-only" data-editar="' + a.id + '" title="Editar"><i class="fas fa-pencil"></i></button>' +
+            '<button class="btn btn-ghost btn-sm admin-only" onclick="cadastrarModeloParaAssunto(\'' + a.id + '\')" title="Cadastrar Modelo de Ofício para este assunto"><i class="fas fa-plus"></i> Novo Ofício</button>' +
+            '<button class="btn btn-ghost btn-icon admin-only" data-editar="' + a.id + '" title="Editar Assunto"><i class="fas fa-pencil"></i></button>' +
         '</div>' +
     '</div>';
 }
@@ -818,6 +823,7 @@ async function carregarAssuntos() {
     listaCache.forEach(a => { if (a.categoria) categoriasCache.add(a.categoria); });
     atualizarContador(listaCache.length);
     atualizarDatalist();
+    popularDropdownFiltroAssuntoOficios();
     
     if (document.getElementById("tela-gerenciar") && document.getElementById("tela-gerenciar").classList.contains("ativa")) {
         filtrarLista();
@@ -855,10 +861,13 @@ async function cadastrarAssuntoTeste() {
 // ═══════════════════════════════════════════════════════════════
 
 function renderAssuntosCheckboxes() {
+    filtrarAssuntoSelectCadastro();
+
+    // 2. Preenche a lista de assuntos adicionais (checkboxes)
     const cont = document.getElementById("assuntos-vinculo-container");
     if (!cont) return;
     if (listaCache.length === 0) {
-        cont.innerHTML = '<div class="empty-mini">Nenhum assunto cadastrado para vincular</div>';
+        cont.innerHTML = '<div class="empty-mini">Nenhum assunto cadastrado</div>';
         return;
     }
     cont.innerHTML = listaCache.map(a => 
@@ -869,17 +878,113 @@ function renderAssuntosCheckboxes() {
     ).join("");
 }
 
-async function salvarModelo() {
+function filtrarAssuntoSelectCadastro() {
+    const selectPrincipal = document.getElementById("modelo-assunto-select");
+    if (!selectPrincipal) return;
+
+    const buscaInput = document.getElementById("modelo-assunto-busca");
+    const termo = buscaInput ? buscaInput.value.trim().toLowerCase() : "";
+    const valAtual = selectPrincipal.value;
+
+    let assuntosFiltrados = listaCache.slice().sort((a, b) => (a.titulo || "").localeCompare(b.titulo || ""));
+
+    if (termo) {
+        const palavras = termo.split(/\s+/).filter(Boolean);
+        assuntosFiltrados = assuntosFiltrados.filter(a => {
+            const tit = (a.titulo || "").toLowerCase();
+            const cat = (a.categoria || "").toLowerCase();
+            const desc = (a.descricao || "").toLowerCase();
+            const tags = (a.palavras_chave || []).map(t => t.toLowerCase());
+            return palavras.every(p => 
+                tit.includes(p) || cat.includes(p) || desc.includes(p) || tags.some(t => t.includes(p))
+            );
+        });
+    }
+
+    if (assuntosFiltrados.length === 0) {
+        selectPrincipal.innerHTML = '<option value="">Nenhum assunto encontrado para "' + sanitize(termo) + '"</option>';
+        aoSelecionarAssuntoNoCadastro();
+        return;
+    }
+
+    let opts = '<option value="">-- Selecione o assunto (' + assuntosFiltrados.length + ' de ' + listaCache.length + ' assuntos) --</option>';
+    opts += assuntosFiltrados.map(a => {
+        const count = listaModelosCache.filter(m => m.assuntos_vinculados && m.assuntos_vinculados.includes(a.id)).length;
+        const infoCount = count > 0 ? ' (' + count + ' ' + (count === 1 ? 'modelo' : 'modelos') + ')' : '';
+        return '<option value="' + a.id + '">' + sanitize(a.titulo) + infoCount + '</option>';
+    }).join("");
+
+    selectPrincipal.innerHTML = opts;
+
+    if (assuntosFiltrados.some(a => a.id === valAtual)) {
+        selectPrincipal.value = valAtual;
+    } else if (assuntosFiltrados.length === 1 && termo) {
+        selectPrincipal.value = assuntosFiltrados[0].id;
+        aoSelecionarAssuntoNoCadastro();
+    } else {
+        selectPrincipal.value = "";
+        aoSelecionarAssuntoNoCadastro();
+    }
+}
+
+function aoSelecionarAssuntoNoCadastro() {
+    const sel = document.getElementById("modelo-assunto-select");
+    const box = document.getElementById("box-modelos-existentes-assunto");
+    const lista = document.getElementById("lista-modelos-existentes-assunto");
+    const txtCount = document.getElementById("txt-count-modelos-existentes");
+    if (!sel || !box || !lista) return;
+
+    const assuntoId = sel.value;
+    if (!assuntoId) {
+        box.style.display = "none";
+        return;
+    }
+
+    const modelosExistentes = listaModelosCache.filter(m => m.assuntos_vinculados && m.assuntos_vinculados.includes(assuntoId));
+    const assObj = listaCache.find(a => a.id === assuntoId);
+    const nomeAssunto = assObj ? assObj.titulo : "";
+
+    if (modelosExistentes.length === 0) {
+        if (txtCount) txtCount.textContent = 'Nenhum modelo de ofício cadastrado para "' + nomeAssunto + '" ainda. Este será o 1º modelo!';
+        lista.innerHTML = '<span style="font-style: italic; color: var(--ink-muted);">Cadastre abaixo o primeiro modelo de ofício para este assunto.</span>';
+    } else {
+        if (txtCount) txtCount.textContent = 'Este assunto "' + nomeAssunto + '" já possui ' + modelosExistentes.length + ' ' + (modelosExistentes.length === 1 ? 'modelo cadastrado' : 'modelos cadastrados') + ':';
+        lista.innerHTML = modelosExistentes.map((m, idx) => 
+            '<div style="display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.7); padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border);">' +
+                '<span><strong>' + (idx + 1) + '.</strong> ' + sanitize(m.titulo) + '</span>' +
+                '<button type="button" class="btn btn-ghost btn-sm" onclick="editarModelo(\'' + m.id + '\')" style="font-size: 0.72rem; padding: 2px 6px;"><i class="fas fa-pencil"></i> Editar</button>' +
+            '</div>'
+        ).join("");
+    }
+    box.style.display = "block";
+}
+
+async function salvarModelo(manterAssunto) {
+    manterAssunto = manterAssunto === true;
+    const assuntoPrincipal = document.getElementById("modelo-assunto-select") ? document.getElementById("modelo-assunto-select").value : "";
     const titulo = document.getElementById("modelo-titulo").value.trim();
     const descricao = document.getElementById("modelo-descricao").value.trim();
     const corpo = document.getElementById("modelo-corpo").value.trim();
 
-    if (!titulo) { toast("Preencha o título do modelo.", "error"); document.getElementById("modelo-titulo").focus(); return; }
-    if (!corpo) { toast("Preencha o corpo do documento.", "error"); document.getElementById("modelo-corpo").focus(); return; }
+    if (!assuntoPrincipal) { 
+        toast("Selecione o Assunto Principal ao qual este modelo pertence.", "error"); 
+        if (document.getElementById("modelo-assunto-select")) document.getElementById("modelo-assunto-select").focus(); 
+        return; 
+    }
+    if (!titulo) { 
+        toast("Preencha o título do modelo.", "error"); 
+        document.getElementById("modelo-titulo").focus(); 
+        return; 
+    }
+    if (!corpo) { 
+        toast("Preencha o corpo do documento.", "error"); 
+        document.getElementById("modelo-corpo").focus(); 
+        return; 
+    }
 
-    const vinculos = [];
+    const vinculos = [assuntoPrincipal];
     document.querySelectorAll('input[name="assunto-vinc"]:checked').forEach(cb => {
-        vinculos.push(cb.value);
+        if (!vinculos.includes(cb.value)) vinculos.push(cb.value);
     });
 
     const dados = {
@@ -901,7 +1006,7 @@ async function salvarModelo() {
                     toast("Modelo de ofício atualizado!");
                 } else {
                     await modelosRef.add(Object.assign({}, dados, { data_cadastro: firebase.firestore.FieldValue.serverTimestamp() }));
-                    toast("Modelo de ofício cadastrado!");
+                    toast("Modelo de ofício cadastrado com sucesso!");
                 }
                 salvoNoFirebase = true;
                 if (editandoModeloId) cancelarEdicaoModelo();
@@ -914,17 +1019,32 @@ async function salvarModelo() {
             let localModelos = lsGet(LS_MODELOS, []);
             if (editandoModeloId) {
                 localModelos = localModelos.map(m => m.id === editandoModeloId ? Object.assign(m, dados, { data_atualizacao: Date.now() }) : m);
-                toast("Modelo atualizado localmente (Firebase offline ou sem permissão)!", "info");
+                toast("Modelo atualizado localmente!", "info");
                 cancelarEdicaoModelo();
             } else {
                 const novo = Object.assign({ id: "loc_" + Date.now() }, dados, { data_cadastro: Date.now() });
                 localModelos.push(novo);
-                toast("Modelo cadastrado localmente (Firebase offline ou sem permissão)!", "info");
+                toast("Modelo cadastrado localmente!", "info");
             }
             lsSet(LS_MODELOS, localModelos);
         }
-        limparFormularioModelo();
-        carregarModelos();
+
+        if (manterAssunto) {
+            document.getElementById("modelo-titulo").value = "";
+            document.getElementById("modelo-descricao").value = "";
+            document.getElementById("modelo-corpo").value = "";
+            editandoModeloId = null;
+            await carregarModelos();
+            if (document.getElementById("modelo-assunto-select")) {
+                document.getElementById("modelo-assunto-select").value = assuntoPrincipal;
+            }
+            aoSelecionarAssuntoNoCadastro();
+            document.getElementById("modelo-titulo").focus();
+            toast("Modelo salvo! Você pode cadastrar mais uma variação para o mesmo assunto agora.", "info");
+        } else {
+            limparFormularioModelo();
+            carregarModelos();
+        }
     } catch (error) {
         console.error("Erro ao salvar modelo:", error);
         toast("Erro ao salvar modelo.", "error");
@@ -933,15 +1053,22 @@ async function salvarModelo() {
     }
 }
 
+function salvarEManterAssunto() {
+    salvarModelo(true);
+}
+
 function limparFormularioModelo() {
+    if (document.getElementById("modelo-assunto-select")) document.getElementById("modelo-assunto-select").value = "";
     document.getElementById("modelo-titulo").value = "";
     document.getElementById("modelo-descricao").value = "";
     document.getElementById("modelo-corpo").value = "";
     document.querySelectorAll('input[name="assunto-vinc"]:checked').forEach(cb => cb.checked = false);
     editandoModeloId = null;
-    document.getElementById("btn-label-modelo-txt").textContent = "Cadastrar Modelo";
+    document.getElementById("btn-label-modelo-txt").textContent = "Salvar Modelo";
     const banner = document.getElementById("edit-mode-banner-modelo");
     if (banner) banner.style.display = "none";
+    const box = document.getElementById("box-modelos-existentes-assunto");
+    if (box) box.style.display = "none";
 }
 
 function cancelarEdicaoModelo() {
@@ -1010,6 +1137,7 @@ async function carregarModelos() {
 
     listaModelosCache = Array.from(mapa.values());
     atualizarContadorModelos(listaModelosCache.length);
+    popularDropdownFiltroAssuntoOficios();
     renderListaModelos(listaModelosCache);
 }
 
@@ -1209,6 +1337,78 @@ function filtrarListaModelos() {
         (m.titulo || "").toLowerCase().includes(termo) ||
         (m.descricao || "").toLowerCase().includes(termo)
     ));
+}
+
+function popularDropdownFiltroAssuntoOficios() {
+    const sel = document.getElementById("filtro-oficio-assunto");
+    if (!sel) return;
+    const valAtual = sel.value;
+    
+    // Filtra APENAS assuntos que possuem ao menos 1 modelo de ofício cadastrado
+    const assuntosComOficios = listaCache.filter(a => 
+        listaModelosCache.some(m => m.assuntos_vinculados && m.assuntos_vinculados.includes(a.id))
+    ).sort((a, b) => (a.titulo || "").localeCompare(b.titulo || ""));
+    
+    if (assuntosComOficios.length === 0) {
+        sel.innerHTML = '<option value="">Nenhum assunto possui ofícios cadastrados</option>';
+        return;
+    }
+
+    let optionsHtml = '<option value="">Todos os assuntos com ofícios (' + assuntosComOficios.length + ' de ' + listaCache.length + ' assuntos)</option>';
+    
+    optionsHtml += assuntosComOficios.map(a => {
+        const countModelos = listaModelosCache.filter(m => m.assuntos_vinculados && m.assuntos_vinculados.includes(a.id)).length;
+        const infoCount = ' (' + countModelos + ' ' + (countModelos === 1 ? 'modelo' : 'modelos') + ')';
+        return '<option value="' + a.id + '">' + sanitize(a.titulo) + infoCount + '</option>';
+    }).join("");
+
+    sel.innerHTML = optionsHtml;
+    if (assuntosComOficios.some(a => a.id === valAtual)) {
+        sel.value = valAtual;
+    } else {
+        sel.value = "";
+    }
+}
+
+function filtrarModelosPorAssuntoSelect() {
+    const sel = document.getElementById("filtro-oficio-assunto");
+    const assuntoId = sel ? sel.value : "";
+    const elContador = document.getElementById("contador-filtro-oficios");
+
+    let filtrados = listaModelosCache;
+    if (assuntoId) {
+        filtrados = listaModelosCache.filter(m => m.assuntos_vinculados && m.assuntos_vinculados.includes(assuntoId));
+        const assObj = listaCache.find(a => a.id === assuntoId);
+        if (elContador) {
+            elContador.textContent = filtrados.length + (filtrados.length === 1 ? " modelo vinculado" : " modelos vinculados") + (assObj ? ' a "' + assObj.titulo + '"' : '');
+        }
+    } else {
+        if (elContador) elContador.textContent = "";
+    }
+
+    renderListaModelos(filtrados);
+}
+
+function cadastrarModeloParaAssunto(assuntoId) {
+    if (!ehAdmin()) {
+        toast("Acesso exclusivo para administradores.", "error");
+        abrirModalAdmin();
+        return;
+    }
+    irPara("cadastro-oficio");
+    renderAssuntosCheckboxes();
+    setTimeout(() => {
+        const sel = document.getElementById("modelo-assunto-select");
+        if (sel) {
+            sel.value = assuntoId;
+            aoSelecionarAssuntoNoCadastro();
+            sel.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+        const assObj = listaCache.find(a => a.id === assuntoId);
+        if (assObj) {
+            toast('Assunto "' + assObj.titulo + '" pré-selecionado para o novo modelo.', "info");
+        }
+    }, 150);
 }
 
 let modalModeloAtual = null;
@@ -2234,4 +2434,151 @@ async function removerItemPV(tipo, texto) {
     toast("Item removido com sucesso!");
     await carregarPronomes();
     filtrarModalPV();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CADASTRO RÁPIDO DE NOVO ASSUNTO (DENTRO DO MÓDULO DE OFÍCIO)
+// ═══════════════════════════════════════════════════════════════
+let tagsRapidasAtivas = [];
+
+function renderChipsRapidas() {
+    const wrapper = document.getElementById("rapido-tags-wrapper");
+    const input   = document.getElementById("rapido-tag-input");
+    if (!wrapper || !input) return;
+    wrapper.querySelectorAll(".chip").forEach(c => c.remove());
+    tagsRapidasAtivas.forEach((tag, i) => {
+        const chip = document.createElement("span");
+        chip.className = "chip";
+        chip.innerHTML = sanitize(tag) + '<button type="button" onclick="removerTagRapida(' + i + ')" title="Remover"><i class="fas fa-xmark"></i></button>';
+        wrapper.insertBefore(chip, input);
+    });
+    input.placeholder = tagsRapidasAtivas.length === 0 ? "Digite e tecle Enter..." : "Mais uma...";
+}
+
+function adicionarTagRapida(valor) {
+    const limpo = valor.trim().replace(/,+$/, "").trim();
+    if (!limpo || tagsRapidasAtivas.includes(limpo)) return;
+    tagsRapidasAtivas.push(limpo);
+    renderChipsRapidas();
+}
+
+function removerTagRapida(i) {
+    tagsRapidasAtivas.splice(i, 1);
+    renderChipsRapidas();
+}
+
+function rapidoTagKeyDown(e) {
+    const input = e.target;
+    if (e.key === "Enter" || e.key === ",") {
+        e.preventDefault();
+        adicionarTagRapida(input.value);
+        input.value = "";
+    } else if (e.key === "Backspace" && input.value === "" && tagsRapidasAtivas.length > 0) {
+        removerTagRapida(tagsRapidasAtivas.length - 1);
+    }
+}
+
+function rapidoTagInput(e) {
+    if (e.target.value.includes(",")) {
+        e.target.value.split(",").forEach(p => adicionarTagRapida(p));
+        e.target.value = "";
+    }
+}
+
+function limparChipsRapidas() {
+    tagsRapidasAtivas = [];
+    renderChipsRapidas();
+    const inp = document.getElementById("rapido-tag-input");
+    if (inp) inp.value = "";
+}
+
+function abrirModalNovoAssuntoRapido() {
+    if (!ehAdmin()) {
+        toast("Acesso exclusivo para administradores.", "error");
+        abrirModalAdmin();
+        return;
+    }
+    const modal = document.getElementById("modal-novo-assunto-rapido");
+    if (modal) {
+        document.getElementById("rapido-assunto-titulo").value = "";
+        document.getElementById("rapido-assunto-categoria").value = "Ofício";
+        limparChipsRapidas();
+        document.getElementById("rapido-assunto-descricao").value = "";
+        modal.style.display = "flex";
+        setTimeout(() => document.getElementById("rapido-assunto-titulo").focus(), 100);
+    }
+}
+
+function fecharModalNovoAssuntoRapido() {
+    const modal = document.getElementById("modal-novo-assunto-rapido");
+    if (modal) modal.style.display = "none";
+}
+
+async function salvarNovoAssuntoRapido(e) {
+    if (e) e.preventDefault();
+    const titulo = document.getElementById("rapido-assunto-titulo").value.trim();
+    const categoria = document.getElementById("rapido-assunto-categoria").value.trim() || "Ofício";
+    
+    // Se houver texto ainda digitado no campo sem ter dado enter, inclui
+    const sobraInput = document.getElementById("rapido-tag-input") ? document.getElementById("rapido-tag-input").value.trim() : "";
+    if (sobraInput) adicionarTagRapida(sobraInput);
+
+    const descricao = document.getElementById("rapido-assunto-descricao").value.trim() || titulo;
+
+    if (!titulo) {
+        toast("Preencha o título do assunto.", "error");
+        document.getElementById("rapido-assunto-titulo").focus();
+        return;
+    }
+
+    const tagsArr = tagsRapidasAtivas.length > 0 ? tagsRapidasAtivas.slice() : [titulo.toLowerCase()];
+
+    const btn = document.getElementById("btn-salvar-assunto-rapido");
+    if (btn) btn.disabled = true;
+
+    try {
+        const dados = {
+            titulo: titulo,
+            categoria: categoria,
+            palavras_chave: tagsArr,
+            descricao: descricao
+        };
+
+        let novoId = null;
+        let salvoNoFirebase = false;
+
+        if (assuntosRef) {
+            try {
+                const docRef = await assuntosRef.add(Object.assign({}, dados, { data_cadastro: firebase.firestore.FieldValue.serverTimestamp() }));
+                novoId = docRef.id;
+                salvoNoFirebase = true;
+            } catch (fbErr) {
+                console.warn("Erro ao salvar assunto no Firebase, usando fallback local:", fbErr);
+            }
+        }
+
+        if (!salvoNoFirebase) {
+            novoId = "loc_ass_" + Date.now();
+            let localAssuntos = lsGet("ga_assuntos", []);
+            localAssuntos.push(Object.assign({ id: novoId }, dados, { data_cadastro: Date.now() }));
+            lsSet("ga_assuntos", localAssuntos);
+        }
+
+        fecharModalNovoAssuntoRapido();
+        await carregarAssuntos();
+
+        // Seleciona automaticamente o novo assunto criado no cadastro de ofícios
+        const selPrincipal = document.getElementById("modelo-assunto-select");
+        if (selPrincipal && novoId) {
+            selPrincipal.value = novoId;
+            aoSelecionarAssuntoNoCadastro();
+        }
+
+        toast(`Novo assunto "${titulo}" cadastrado e selecionado!`, "success");
+    } catch (err) {
+        console.error("Erro ao cadastrar novo assunto rápido:", err);
+        toast("Erro ao cadastrar assunto.", "error");
+    } finally {
+        if (btn) btn.disabled = false;
+    }
 }

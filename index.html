@@ -1061,10 +1061,22 @@ textarea {
             </div>
         </div>
 
+        <div class="filtros-bar" style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--surface); padding: 12px 20px; border-radius: var(--r); border: 1.5px solid var(--border); box-shadow: var(--sh-xs);">
+            <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
+                <label for="filtro-oficio-assunto" style="font-weight: 700; font-size: 0.8rem; text-transform: uppercase; color: var(--accent); white-space: nowrap; margin: 0;">
+                    <i class="fas fa-filter"></i> Filtrar por Assunto:
+                </label>
+                <select id="filtro-oficio-assunto" onchange="filtrarModelosPorAssuntoSelect()" style="max-width: 420px; font-size: 0.88rem; padding: 8px 12px;">
+                    <option value="">Todos os assuntos cadastrados</option>
+                </select>
+            </div>
+            <div id="contador-filtro-oficios" style="font-size: 0.8rem; color: var(--ink-muted); font-weight: 600;"></div>
+        </div>
+
         <div id="resultados_modelos">
             <div class="empty">
                 <i class="fas fa-magnifying-glass"></i>
-                <p>Digite acima para encontrar modelos de ofício</p>
+                <p>Digite acima ou selecione um assunto para encontrar modelos de ofício</p>
             </div>
         </div>
 
@@ -1096,35 +1108,65 @@ textarea {
                         </button>
                     </div>
 
-                    <!-- Linha 1: Título -->
+                    <!-- Linha 1: Seleção de Assunto Principal com Busca -->
                     <div class="form-row cols-1">
                         <div class="form-group">
-                            <label for="modelo-titulo">Título do Modelo <span class="obrig">*</span></label>
-                            <input type="text" id="modelo-titulo" placeholder="Ex: Ofício de Solicitação de Apoio Institucional">
-                            <span class="field-hint"><i class="fas fa-info-circle"></i> Nome descritivo para identificar e localizar o modelo</span>
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                                <label for="modelo-assunto-busca" style="margin: 0;">Assunto Principal do Modelo <span class="obrig">*</span></label>
+                                <button type="button" class="btn btn-ghost btn-sm" onclick="abrirModalNovoAssuntoRapido()" style="color: var(--accent); font-weight: 700; font-size: 0.78rem; padding: 2px 8px; display: inline-flex; align-items: center; gap: 4px; background: var(--accent-lt); border-radius: 12px;">
+                                    <i class="fas fa-plus-circle"></i> + Cadastrar Novo Assunto
+                                </button>
+                            </div>
+                            <div style="position: relative; margin-bottom: 6px;">
+                                <input type="text" id="modelo-assunto-busca" placeholder="🔍 Digite para buscar o assunto por palavra-chave (ex: FONAVID, férias, certidão)..." oninput="filtrarAssuntoSelectCadastro()" autocomplete="off" style="padding-left: 38px; font-size: 0.9rem;">
+                                <i class="fas fa-magnifying-glass" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--accent); font-size: 0.9rem; pointer-events: none;"></i>
+                            </div>
+                            <select id="modelo-assunto-select" onchange="aoSelecionarAssuntoNoCadastro()" required style="font-weight: 600; padding: 10px 14px;">
+                                <option value="">-- Selecione o assunto ao qual este ofício pertence --</option>
+                            </select>
+                            <span class="field-hint"><i class="fas fa-folder-open"></i> Digite no campo de busca acima para localizar rapidamente o assunto desejado</span>
                         </div>
                     </div>
 
-                    <!-- Linha 2: Descrição -->
+                    <!-- Caixa Informativa de Modelos Existentes para o Assunto -->
+                    <div id="box-modelos-existentes-assunto" style="display: none; margin-bottom: 20px; padding: 14px 16px; background: var(--green-50); border: 1.5px solid var(--green-600); border-radius: var(--r-sm); color: var(--green-900);">
+                        <div style="font-weight: 700; font-size: 0.85rem; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-file-circle-check"></i> <span id="txt-count-modelos-existentes">Modelos já cadastrados para este assunto:</span>
+                        </div>
+                        <div id="lista-modelos-existentes-assunto" style="font-size: 0.82rem; display: flex; flex-direction: column; gap: 4px;"></div>
+                    </div>
+
+                    <!-- Linha 2: Título -->
+                    <div class="form-row cols-1">
+                        <div class="form-group">
+                            <label for="modelo-titulo">Título do Modelo (Variação) <span class="obrig">*</span></label>
+                            <input type="text" id="modelo-titulo" placeholder="Ex: Modelo Padrão / Solicitação Inicial ou Modelo Urgente">
+                            <span class="field-hint"><i class="fas fa-info-circle"></i> Nome descritivo para diferenciar este modelo dos demais modelos do mesmo assunto</span>
+                        </div>
+                    </div>
+
+                    <!-- Linha 3: Descrição -->
                     <div class="form-row cols-1">
                         <div class="form-group">
                             <label for="modelo-descricao">Descrição Curta</label>
-                            <input type="text" id="modelo-descricao" placeholder="Ex: Modelo de ofício padrão para solicitar cooperação operacional entre órgãos públicos">
+                            <input type="text" id="modelo-descricao" placeholder="Ex: Modelo padrão de ofício de solicitação inicial">
                         </div>
                     </div>
 
-                    <!-- Linha 3: Assuntos Vinculados -->
+                    <!-- Linha 4: Assuntos Adicionais (opcional) -->
                     <div class="form-row cols-1">
                         <div class="form-group">
-                            <label>Vincular a Assuntos Cadastrados</label>
-                            <div id="assuntos-vinculo-container" style="max-height: 160px; overflow-y: auto; border: 1.5px solid var(--border); border-radius: var(--r-sm); padding: 12px; background: var(--surface); display: flex; flex-direction: column; gap: 8px;">
-                                <div class="empty-mini">Nenhum assunto cadastrado para vincular</div>
+                            <label style="display: flex; align-items: center; justify-content: space-between;">
+                                <span>Outros Assuntos Adicionais (opcional)</span>
+                                <small style="font-weight: 400; text-transform: none; color: var(--ink-muted);">Vincular também a estes assuntos</small>
+                            </label>
+                            <div id="assuntos-vinculo-container" style="max-height: 140px; overflow-y: auto; border: 1.5px solid var(--border); border-radius: var(--r-sm); padding: 10px 12px; background: var(--surface); display: flex; flex-direction: column; gap: 6px;">
+                                <div class="empty-mini">Nenhum assunto cadastrado</div>
                             </div>
-                            <span class="field-hint"><i class="fas fa-info-circle"></i> O modelo ficará associado a estes assuntos para consulta rápida</span>
                         </div>
                     </div>
 
-                    <!-- Linha 4: Corpo do Ofício -->
+                    <!-- Linha 5: Corpo do Ofício -->
                     <div class="form-row cols-1">
                         <div class="form-group">
                             <label for="modelo-corpo">
@@ -1140,9 +1182,12 @@ textarea {
                     </div>
                 </div>
 
-                <div class="form-actions">
+                <div class="form-actions" style="flex-wrap: wrap;">
                     <button class="btn btn-primary btn-lg" id="btn-cadastrar-modelo" onclick="salvarModelo()">
-                        <i class="fas fa-save"></i> <span id="btn-label-modelo-txt">Cadastrar Modelo</span>
+                        <i class="fas fa-save"></i> <span id="btn-label-modelo-txt">Salvar Modelo</span>
+                    </button>
+                    <button class="btn btn-outline btn-lg" id="btn-salvar-mais-um" onclick="salvarEManterAssunto()" title="Salva este modelo e mantém o assunto selecionado para cadastrar mais uma variação">
+                        <i class="fas fa-plus"></i> Salvar e Criar Outro Modelo para este Assunto
                     </button>
                     <button class="btn btn-ghost" onclick="limparFormularioModelo()" title="Limpar formulário">
                         <i class="fas fa-eraser"></i> Limpar
@@ -1433,6 +1478,51 @@ textarea {
             <button class="btn btn-primary" onclick="confirmarPreenchimentoModelo()">
                 <i class="fas fa-copy"></i> Copiar preenchido
             </button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     MODAL: CADASTRO RÁPIDO DE NOVO ASSUNTO
+══════════════════════════════════════════════════════════ -->
+<div id="modal-novo-assunto-rapido" style="display:none; position:fixed; inset:0; z-index:550; background:rgba(10,20,15,.55); backdrop-filter:blur(4px); align-items:center; justify-content:center; padding:20px;">
+    <div class="modal-box" style="max-width: 520px; width: 100%;">
+        <div class="modal-header">
+            <div>
+                <h3><i class="fas fa-folder-plus"></i> Cadastrar Novo Assunto Rápido</h3>
+                <p style="color: rgba(255,255,255,0.7); font-size: 0.8rem; margin-top: 2px;">Crie um novo assunto sem sair da tela de cadastro de ofício</p>
+            </div>
+            <button class="modal-close" onclick="fecharModalNovoAssuntoRapido()"><i class="fas fa-xmark"></i></button>
+        </div>
+        <div class="modal-body" style="padding: 20px;">
+            <form id="form-novo-assunto-rapido" onsubmit="salvarNovoAssuntoRapido(event)">
+                <div class="modal-campo" style="margin-bottom: 14px;">
+                    <label for="rapido-assunto-titulo">Título do Assunto <span class="obrig">*</span></label>
+                    <input type="text" id="rapido-assunto-titulo" placeholder="Ex: Solicitação de Manutenção em Computadores" required style="width: 100%; padding: 10px 12px; font-size: 0.9rem;">
+                </div>
+                <div class="modal-campo" style="margin-bottom: 14px;">
+                    <label for="rapido-assunto-categoria">Categoria</label>
+                    <input type="text" id="rapido-assunto-categoria" placeholder="Ex: Ofício, Informática, Obras..." list="categorias-list" style="width: 100%; padding: 10px 12px; font-size: 0.9rem;">
+                </div>
+                <div class="modal-campo" style="margin-bottom: 14px;">
+                    <label>Palavras-chave</label>
+                    <div class="tags-input-wrapper" id="rapido-tags-wrapper" onclick="document.getElementById('rapido-tag-input').focus()">
+                        <input type="text" id="rapido-tag-input"
+                               placeholder="Digite e tecle Enter..."
+                               onkeydown="rapidoTagKeyDown(event)"
+                               oninput="rapidoTagInput(event)">
+                    </div>
+                    <span class="field-hint"><i class="fas fa-info-circle"></i> Tecle <kbd style="background:var(--sand-200);border:1px solid var(--border);border-radius:3px;padding:0 5px;font-size:.75rem">Enter</kbd> ou vírgula para separar cada tag</span>
+                </div>
+                <div class="modal-campo" style="margin-bottom: 14px;">
+                    <label for="rapido-assunto-descricao">Texto do Assunto / Resumo</label>
+                    <textarea id="rapido-assunto-descricao" rows="3" placeholder="Ex: Solicitação de suporte técnico e manutenção..." style="width: 100%; padding: 10px 12px; font-size: 0.9rem; font-family: inherit;"></textarea>
+                </div>
+                <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px;">
+                    <button type="button" class="btn btn-ghost" onclick="fecharModalNovoAssuntoRapido()">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="btn-salvar-assunto-rapido"><i class="fas fa-save"></i> Salvar e Selecionar</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
